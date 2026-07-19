@@ -46,7 +46,7 @@ jobs:
           {
             echo "## VoHive LuCI ${luci_version}"
             echo
-            echo "### 更新日志"
+            echo "### Changelog"
             echo
             if [ -n "$previous_tag" ]; then
               git log --pretty=format:'- %s (%h)' "${previous_tag}..HEAD"
@@ -115,7 +115,7 @@ jobs:
             tmp="${out}.tmp"
             real_version=""
 
-            # 1) 先从核心 release 仓库下载
+            # 1) Try downloading from the core release repo first
             if gh release download "${VOHIVE_VERSION}" \
                 --repo voorz/vohive-next \
                 --pattern "${asset}" \
@@ -125,15 +125,15 @@ jobs:
               echo "::notice::${arch}: fetched ${asset} from release repo."
             else
               rm -f "${tmp}"
-              # 2) 查项目预置目录（files/），按版本倒序取最新
+              # 2) Fall back to preset dir (files/), pick the latest version
               preset="$(ls -1 source/vohive-core/files/vohive_v*_linux_${arch} 2>/dev/null | sort -Vr | head -n1 || true)"
               if [ -n "${preset}" ] && [ -s "${preset}" ]; then
                 cp -f "${preset}" "${out}"
                 real_version="$(basename "${preset}" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9])_linux_.*/\1/')"
-                echo "::warning::${arch}: release 下载失败，使用预置 ${preset##*/}（版本 ${real_version}）。"
+                echo "::warning::${arch}: release download failed, using preset ${preset##*/} (version ${real_version})."
               else
-                # 3) 都没有，跳过该架构
-                echo "::notice::${arch}: 无可用核心，跳过该架构构建。"
+                # 3) Neither available, skip this arch
+                echo "::notice::${arch}: no core available, skipping this arch."
                 rm -f "${out}"
                 continue
               fi
@@ -146,7 +146,7 @@ jobs:
             available="${available} ${arch}"
           done
           echo "AVAILABLE_ARCHS=${available# }" >> "$GITHUB_ENV"
-          # 用实际产出的核心版本覆盖 VOHIVE_VERSION（使包文件名版本与实际二进制一致）
+          # Override VOHIVE_VERSION with the actual produced core version (so package filename matches the real binary)
           real_core_version="$(cut -d= -f2 source/vohive-core/files/.available 2>/dev/null | sort -Vr | head -n1 || true)"
           if [ -n "$real_core_version" ]; then
             echo "VOHIVE_VERSION=$real_core_version" >> "$GITHUB_ENV"
@@ -202,7 +202,7 @@ jobs:
           ./scripts/feeds update vohive
           ./scripts/feeds install -a -p vohive
 
-          # 将 Makefile 中的 PKG_VERSION 替换为当前 tag 版本
+          # Replace PKG_VERSION in Makefile with the current tag version
           sed -i "s/^PKG_VERSION?=.*/PKG_VERSION?=${{ needs.prepare.outputs.luci_version }}/" \
             feeds/vohive/luci-app-vohive/Makefile
 
@@ -284,10 +284,10 @@ jobs:
               [ -f "$package" ] || continue
               cp "$package" releases/
             done
-            [ -f "$dir/BUILD-INFO.txt" ] && cp "$dir/BUILD-INFO.txt" "releases/$(basename "$dir")-BUILD-INFO.txt"
           done
 
-          (cd releases && sha256sum *.ipk *.apk 2>/dev/null > sha256sums.txt || true)
+          echo "=== SHA256 ==="
+          (cd releases && sha256sum *.ipk *.apk 2>/dev/null || true)
           ls -lh releases
 
       - name: Generate package table in release notes
@@ -295,11 +295,11 @@ jobs:
           set -eu
           available_file="$(find artifacts -name .available -print -quit 2>/dev/null || true)"
           {
-            echo "### 安装包说明"
+            echo "### Packages"
             echo
-            echo "| 包名 | 说明 |"
-            echo "|------|------|"
-            echo "| \`luci-app-vohive_*.ipk/apk\` | LuCI 管理页面（必装），不含 VoHive core 二进制 |"
+            echo "| Package | Description |"
+            echo "|---------|-------------|"
+            echo "| \`luci-app-vohive_*.ipk/apk\` | LuCI management page (required), without VoHive core binary |"
             if [ -n "$available_file" ] && [ -f "$available_file" ]; then
               declare -A arch_ver
               while IFS='=' read -r a v; do
@@ -308,29 +308,29 @@ jobs:
               for a in arm64 amd64 armv7; do
                 if [ -n "${arch_ver[$a]:-}" ]; then
                   case "$a" in
-                    arm64) desc="适用于 aarch64/arm64 路由器（如 Kwrt 25.12）" ;;
-                    amd64) desc="适用于 x86_64 设备" ;;
-                    armv7) desc="适用于 armv7l 路由器" ;;
+                    arm64) desc="for aarch64/arm64 routers (e.g. Kwrt 25.12)" ;;
+                    amd64) desc="for x86_64 devices" ;;
+                    armv7) desc="for armv7l routers" ;;
                   esac
-                  echo "| \`vohive-core-${a}_*.ipk/apk\` | VoHive core ${arch_ver[$a]}，${desc} |"
+                  echo "| \`vohive-core-${a}_*.ipk/apk\` | VoHive core ${arch_ver[$a]}, ${desc} |"
                 fi
               done
             fi
             echo
-            echo "### 如何选择"
+            echo "### How to choose"
             echo
-            echo "1. **确认路由器架构**：SSH 执行 \`uname -m\`"
-            echo "   - \`aarch64\` → 选 **arm64**"
-            echo "   - \`x86_64\` → 选 **amd64**"
-            echo "   - \`armv7l\` → 选 **armv7**"
-            echo "2. **确认 OpenWrt 版本**："
-            echo "   - OpenWrt / Kwrt **24.x** → 下载 **.ipk** 包"
-            echo "   - OpenWrt / Kwrt **25.x** → 下载 **.apk** 包"
-            echo "3. **安装顺序**：先安装 \`luci-app-vohive\`，再安装对应架构的 \`vohive-core-*\`"
-            echo "   （或在 LuCI 页面的"核心管理"中在线安装核心）"
+            echo "1. **Check router architecture**: run \`uname -m\` via SSH"
+            echo "   - \`aarch64\` → choose **arm64**"
+            echo "   - \`x86_64\` → choose **amd64**"
+            echo "   - \`armv7l\` → choose **armv7**"
+            echo "2. **Check OpenWrt version**:"
+            echo "   - OpenWrt / Kwrt **24.x** → download **.ipk**"
+            echo "   - OpenWrt / Kwrt **25.x** → download **.apk**"
+            echo "3. **Install order**: install \`luci-app-vohive\` first, then the matching \`vohive-core-*\`"
+            echo "   (or install the core online from the LuCI 'Core management' page)"
             echo
             if [ -n "${{ needs.prepare.outputs.previous_tag }}" ]; then
-              echo "完整对比: https://github.com/${GITHUB_REPOSITORY}/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.tag_name }}"
+              echo "Full comparison: https://github.com/${GITHUB_REPOSITORY}/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.tag_name }}"
             fi
           } >> release-notes/release-notes.md
 
