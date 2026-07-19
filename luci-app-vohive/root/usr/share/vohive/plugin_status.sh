@@ -23,7 +23,7 @@ json="$(curl -fsSL --show-error --connect-timeout 8 --max-time 25 --retry 2 "htt
 	printf '{"ok":false,"message":"%s","repo":"%s","current":"%s","latest":"","has_update":false,"versions":[]}\n' \
 		"$(json_escape "Failed to query plugin releases: $msg")" \
 		"$(json_escape "$PLUGIN_REPO")" \
-		"$(json_escape "$current")"
+		"$(json_escape "$current_norm")"
 	exit 0
 }
 
@@ -34,7 +34,7 @@ has_update=false
 
 printf '{"ok":true,"repo":"%s","current":"%s","latest":"%s","has_update":%s,"versions":[' \
 	"$(json_escape "$PLUGIN_REPO")" \
-	"$(json_escape "$current")" \
+	"$(json_escape "$current_norm")" \
 	"$(json_escape "$latest")" \
 	"$has_update"
 i=0

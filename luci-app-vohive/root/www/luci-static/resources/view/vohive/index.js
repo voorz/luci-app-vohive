@@ -571,6 +571,7 @@ return view.extend({
 			var pluginNode = self.renderPluginManagement(plugin);
 
 			return E('div', {}, [
+				self.renderIntro(),
 				self.statusNode,
 				serviceButtons,
 				self.coreSectionNode,
@@ -578,6 +579,24 @@ return view.extend({
 				depsNode
 			]);
 		});
+	},
+
+	renderIntro: function() {
+		return E('div', { 'class': 'cbi-section' }, [
+			E('p', { 'style': 'margin:0 0 .5em 0;' }, _('VoHive 的 OpenWrt 管理插件，在路由器界面中完成核心安装、服务控制、配置管理与 USB 驱动运维。')),
+			E('p', { 'style': 'margin:0 0 .75em 0;' }, [
+				_('仓库地址：'),
+				E('a', { 'href': 'https://github.com/voorz/luci-app-vohive', 'target': '_blank' }, _('点击访问'))
+			]),
+			E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:.4em;' }, [
+				E('span', { 'class': 'ifacebadge', 'style': 'background:#eff5fb; color:#0066cc; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'License: MIT'),
+				E('span', { 'class': 'ifacebadge', 'style': 'background:#e0f5f0; color:#008055; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'OpenWrt'),
+				E('span', { 'class': 'ifacebadge', 'style': 'background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'LuCI'),
+				E('span', { 'class': 'ifacebadge', 'style': 'background:#fff3e0; color:#e65100; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'ipk | apk'),
+				E('span', { 'class': 'ifacebadge', 'style': 'background:#f3e5f5; color:#7b1fa2; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'arm64 | amd64 | armv7'),
+				E('a', { 'href': 'https://github.com/voorz/luci-app-vohive/releases', 'target': '_blank', 'class': 'ifacebadge', 'style': 'background:#e3f2fd; color:#1565c0; padding:2px 8px; border-radius:3px; font-size:12px; text-decoration:none;' }, _('Release'))
+			])
+		]);
 	},
 
 	renderCoreManagement: function(status, releases) {
@@ -688,32 +707,31 @@ return view.extend({
 	},
 
 	renderDeviceDependencies: function(data) {
-		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('依赖状态')),
-			E('div', { 'style': 'display:flex; gap:1em; flex-wrap:wrap; align-items:center;' }, [
-				this.renderDependencyState('kmod-usb-serial', data.serial_driver_installed),
-				this.renderDependencyState('kmod-usb-serial-option', data.option_driver_installed),
-				this.renderDependencyState('socat', data.socat_installed),
-				data.serial_driver_installed && data.option_driver_installed ? '' : E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'click': ui.createHandlerFn(this, function() {
-						return runScript('/usr/share/vohive/device_tools.sh', [ 'install_serial_drivers' ]);
-					})
-				}, _('安装串口驱动')),
-				data.socat_installed ? '' : E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'click': ui.createHandlerFn(this, function() {
-						return runScript('/usr/share/vohive/device_tools.sh', [ 'install_socat' ]);
-					})
-				}, _('安装 socat'))
-			])
-		]);
-	},
+		var deps = [
+			{ name: 'kmod-usb-serial', installed: data.serial_driver_installed, install_action: 'install_serial_drivers' },
+			{ name: 'kmod-usb-serial-option', installed: data.option_driver_installed, install_action: 'install_serial_drivers' },
+			{ name: 'socat', installed: data.socat_installed, install_action: 'install_socat' }
+		];
 
-	renderDependencyState: function(label, installed) {
-		return E('span', {
-			'style': 'color:%s; font-weight:700;'.format(installed ? '#37a24d' : '#d9534f')
-		}, installed ? _('%s: 已安装').format(label) : _('%s: 未安装').format(label));
+		var rows = deps.map(function(dep) {
+			var status;
+			if (dep.installed) {
+				status = E('span', { 'style': 'color:#37a24d; font-weight:700;' }, _('已安装'));
+			} else {
+				status = E('button', {
+					'class': 'btn cbi-button cbi-button-action',
+					'click': ui.createHandlerFn(this, function() {
+						return runScript('/usr/share/vohive/device_tools.sh', [ dep.install_action ]);
+					})
+				}, _('安装依赖'));
+			}
+			return E('tr', {}, [ E('td', {}, dep.name), E('td', {}, status) ]);
+		}.bind(this));
+
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', { 'style': 'margin-bottom:.75em;' }, _('依赖状态')),
+			E('table', { 'class': 'table' }, rows)
+		]);
 	},
 
 	/* ---------------------------------------------------------- */
