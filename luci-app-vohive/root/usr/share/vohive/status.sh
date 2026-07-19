@@ -1,5 +1,7 @@
 #!/bin/sh
 
+. /usr/share/vohive/lib.sh
+
 BIN="/etc/vohive/bin/vohive"
 VERSION_FILE="/etc/vohive/bin/version"
 ARCH_FILE="/etc/vohive/bin/arch"
@@ -169,31 +171,43 @@ if [ -x "$BIN" ]; then
 	core_arch="$(cat "$ARCH_FILE" 2>/dev/null || true)"
 	[ -n "$core_arch" ] || core_arch="$core_arch_effective"
 
-	# 核心运行时优先从 API 获取版本号
+	# 先读版本文件作为兜底
+	_file_version="$(cat "$VERSION_FILE" 2>/dev/null || true)"
+	[ -n "$_file_version" ] && [ "$_file_version" != "--" ] && core_version="$_file_version"
+
+	# 核心运行时每分钟从 API 获取一次版本号
 	if [ "$is_running" = "1" ]; then
-		_api_port="$(uci_get port '7575')"
-		_api_token="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_api_port}/api/auth/login" \
-			-X POST -H 'Content-Type: application/json' \
-			-d '{"username":"'"$(uci_get username 'admin')"'","password":"'"$(uci_get password 'admin')"'"}' \
-			2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
-		if [ -n "$_api_token" ]; then
-			_api_version="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_api_port}/api/system/info" \
-				-H "Authorization: Bearer $_api_token" \
-				2>/dev/null | jsonfilter -e '@.version' 2>/dev/null || true)"
-			if [ -n "$_api_version" ]; then
-				core_version="$_api_version"
-				printf '%s\n' "$_api_version" > "$VERSION_FILE"
+		_now="$(date +%s)"
+		_last_query=0
+		[ -f /tmp/vohive/version_api_ts ] && _last_query="$(cat /tmp/vohive/version_api_ts 2>/dev/null || echo 0)"
+		_elapsed=$((_now - _last_query))
+		if [ "$_elapsed" -ge 60 ]; then
+			printf '%s' "$_now" > /tmp/vohive/version_api_ts 2>/dev/null || true
+			_api_port="$(uci_get port '7575')"
+			_api_token="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_api_port}/api/auth/login" \
+				-X POST -H 'Content-Type: application/json' \
+				-d '{"username":"'"$(uci_get username 'admin')"'","password":"'"$(uci_get password 'admin')"'"}' \
+				2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
+			if [ -n "$_api_token" ]; then
+				_api_version="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_api_port}/api/system/info" \
+					-H "Authorization: Bearer $_api_token" \
+					2>/dev/null | jsonfilter -e '@.version' 2>/dev/null || true)"
+				if [ -n "$_api_version" ]; then
+					core_version="$_api_version"
+					printf '%s\n' "$_api_version" > "$VERSION_FILE"
+				fi
 			fi
 		fi
-	else
-		# 核心未运行时读版本文件
-		_file_version="$(cat "$VERSION_FILE" 2>/dev/null || true)"
-		[ -n "$_file_version" ] && core_version="$_file_version"
 	fi
 fi
 
 default_password=0
 [ "$(uci_get username 'admin')" = "admin" ] && [ "$(uci_get password 'admin')" = "admin" ] && default_password=1
+
+plugin_version="$(pkg_installed_version luci-app-vohive 2>/dev/null || cat /usr/share/vohive/plugin_version 2>/dev/null || true)"
+plugin_version="${plugin_version#v}"
+plugin_version="${plugin_version%-r*}"
+plugin_version="${plugin_version%-[0-9]*}"
 
 port_status="unknown"
 if command -v ss >/dev/null 2>&1; then

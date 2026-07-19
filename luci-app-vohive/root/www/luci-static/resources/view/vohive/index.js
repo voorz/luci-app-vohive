@@ -558,45 +558,21 @@ return view.extend({
 
 		this.statusNode = E('div', {}, this.renderStatus(status, releases, plugin));
 		this.releasesData = releases;
-
-		var serviceButtons = this.renderServiceButtons();
+		this.pluginData = plugin;
 
 		this.coreSectionNode = E('div', {});
-
-		var depsNode = this.renderDeviceDependencies(deviceDeps);
 
 		return this.renderCoreManagement(status, releases).then(function(coreEl) {
 			dom.content(self.coreSectionNode, coreEl);
 
-			var pluginNode = self.renderPluginManagement(plugin);
+			var pluginNode = self.renderPluginManagement(plugin, deviceDeps);
 
 			return E('div', {}, [
-				self.renderIntro(),
 				self.statusNode,
-				serviceButtons,
 				self.coreSectionNode,
-				pluginNode,
-				depsNode
+				pluginNode
 			]);
 		});
-	},
-
-	renderIntro: function() {
-		return E('div', { 'class': 'cbi-section' }, [
-			E('p', { 'style': 'margin:0 0 .5em 0;' }, _('VoHive 的 OpenWrt 管理插件，在路由器界面中完成核心安装、服务控制、配置管理与 USB 驱动运维。')),
-			E('p', { 'style': 'margin:0 0 .75em 0;' }, [
-				_('仓库地址：'),
-				E('a', { 'href': 'https://github.com/voorz/luci-app-vohive', 'target': '_blank' }, _('点击访问'))
-			]),
-			E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:.4em;' }, [
-				E('span', { 'class': 'ifacebadge', 'style': 'background:#eff5fb; color:#0066cc; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'License: MIT'),
-				E('span', { 'class': 'ifacebadge', 'style': 'background:#e0f5f0; color:#008055; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'OpenWrt'),
-				E('span', { 'class': 'ifacebadge', 'style': 'background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'LuCI'),
-				E('span', { 'class': 'ifacebadge', 'style': 'background:#fff3e0; color:#e65100; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'ipk | apk'),
-				E('span', { 'class': 'ifacebadge', 'style': 'background:#f3e5f5; color:#7b1fa2; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'arm64 | amd64 | armv7'),
-				E('a', { 'href': 'https://github.com/voorz/luci-app-vohive/releases', 'target': '_blank', 'class': 'ifacebadge', 'style': 'background:#e3f2fd; color:#1565c0; padding:2px 8px; border-radius:3px; font-size:12px; text-decoration:none;' }, _('Release'))
-			])
-		]);
 	},
 
 	renderCoreManagement: function(status, releases) {
@@ -671,7 +647,7 @@ return view.extend({
 		});
 	},
 
-	renderPluginManagement: function(plugin) {
+	renderPluginManagement: function(plugin, deviceDeps) {
 		var repo = plugin.repo || DEFAULT_PLUGIN_REPO;
 		var current = plugin.current || _('未知');
 		var latest = plugin.loading ? loadingText(_('正在加载...')) : pluginVersionLink(repo, plugin.latest || _('未知'));
@@ -682,13 +658,38 @@ return view.extend({
 				E('span', { 'style': 'color:%s;'.format(plugin.has_update ? '#d58512' : '#37a24d') }, plugin.has_update ? _('(可更新)') : _('(已是最新版本)'))
 			]);
 
+		var depRows = [];
+		if (deviceDeps) {
+			var deps = [
+				{ name: 'kmod-usb-serial', installed: deviceDeps.serial_driver_installed, install_action: 'install_serial_drivers' },
+				{ name: 'kmod-usb-serial-option', installed: deviceDeps.option_driver_installed, install_action: 'install_serial_drivers' },
+				{ name: 'socat', installed: deviceDeps.socat_installed, install_action: 'install_socat' }
+			];
+			depRows = deps.map(function(dep) {
+				var status;
+				if (dep.installed) {
+					status = E('span', { 'style': 'color:#37a24d; font-weight:700;' }, _('已安装'));
+				} else {
+					status = E('button', {
+						'class': 'btn cbi-button cbi-button-action',
+						'click': ui.createHandlerFn(this, function() {
+							return runScript('/usr/share/vohive/device_tools.sh', [ dep.install_action ]);
+						})
+					}, _('安装依赖'));
+				}
+				return E('tr', {}, [ E('td', { 'style': 'width:30%;' }, dep.name), E('td', {}, status) ]);
+			}.bind(this));
+		}
+
+		var tableRows = [
+			E('tr', {}, [ E('td', { 'style': 'width:30%;' }, _('当前版本')), E('td', {}, pluginVersionLink(repo, current)) ]),
+			E('tr', {}, [ E('td', { 'style': 'width:30%;' }, _('最新版本')), E('td', {}, latest) ])
+		].concat(depRows);
+
 		var nodes = [
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', { 'style': 'margin-bottom:.75em;' }, _('插件管理')),
-				E('table', { 'class': 'table' }, [
-					E('tr', {}, [ E('td', {}, _('当前版本')), E('td', {}, pluginVersionLink(repo, current)) ]),
-					E('tr', {}, [ E('td', {}, _('最新版本')), E('td', {}, latest) ])
-				]),
+				E('h3', { 'style': 'margin-bottom:.75em;' }, _('插件与依赖')),
+				E('table', { 'class': 'table' }, tableRows),
 				E('button', {
 					'class': 'btn cbi-button cbi-button-action',
 					'style': 'margin-top:.75em;',
@@ -704,34 +705,6 @@ return view.extend({
 			nodes.unshift(E('div', { 'class': 'alert-message warning' }, plugin.message || _('无法获取插件版本信息。')));
 
 		return E('div', {}, nodes);
-	},
-
-	renderDeviceDependencies: function(data) {
-		var deps = [
-			{ name: 'kmod-usb-serial', installed: data.serial_driver_installed, install_action: 'install_serial_drivers' },
-			{ name: 'kmod-usb-serial-option', installed: data.option_driver_installed, install_action: 'install_serial_drivers' },
-			{ name: 'socat', installed: data.socat_installed, install_action: 'install_socat' }
-		];
-
-		var rows = deps.map(function(dep) {
-			var status;
-			if (dep.installed) {
-				status = E('span', { 'style': 'color:#37a24d; font-weight:700;' }, _('已安装'));
-			} else {
-				status = E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'click': ui.createHandlerFn(this, function() {
-						return runScript('/usr/share/vohive/device_tools.sh', [ dep.install_action ]);
-					})
-				}, _('安装依赖'));
-			}
-			return E('tr', {}, [ E('td', {}, dep.name), E('td', {}, status) ]);
-		}.bind(this));
-
-		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', { 'style': 'margin-bottom:.75em;' }, _('依赖状态')),
-			E('table', { 'class': 'table' }, rows)
-		]);
 	},
 
 	/* ---------------------------------------------------------- */
@@ -1408,19 +1381,23 @@ return view.extend({
 			E('div', {
 				'style': 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap;'
 			}, [
-				E('h3', { 'style': 'margin-bottom:.75em;' }, _('运行状态')),
-				status.running ? E('a', { 'class': 'btn cbi-button cbi-button-action', 'target': '_blank', 'href': webUrl }, _('打开 VoHive Web UI')) : ''
+				E('h3', { 'style': 'margin-bottom:.75em;' }, _('运行状态'))
 			]),
 			table
-		].concat(warnings));
+		].concat(warnings).concat([
+			E('div', { 'style': 'display:flex; align-items:center; justify-content:space-between; margin-top:.75em; flex-wrap:wrap; gap:1em;' }, [
+				this.renderServiceButtons(),
+				status.running ? E('a', { 'class': 'btn cbi-button cbi-button-action', 'target': '_blank', 'href': webUrl }, _('打开 VoHive Web UI')) : ''
+			])
+		]));
 	},
 
-	updateStatusNode: function(status) {
-		if (!this.statusNode)
-			return;
+updateStatusNode: function(status) {
+	if (!this.statusNode)
+		return;
 
-		dom.content(this.statusNode, this.renderStatus(status, this.releasesData, null));
-	},
+	dom.content(this.statusNode, this.renderStatus(status, this.releasesData, this.pluginData));
+},
 
 	refreshStatus: function() {
 		return fs.exec_direct('/usr/share/vohive/status.sh', [])
@@ -1433,8 +1410,7 @@ return view.extend({
 	},
 
 	renderServiceButtons: function() {
-		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('服务操作')),
+		return E('span', {}, [
 			E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
 				'click': ui.createHandlerFn(this, function() { return runScript('/usr/share/vohive/service.sh', [ 'start' ]); })
@@ -1622,8 +1598,21 @@ return view.extend({
 				window.setTimeout(self.restoreRunningTask.bind(self), 0);
 
 				return E('div', {}, [
-					E('h2', {}, _('VoHive')),
-					E('div', { 'class': 'cbi-map-descr' }, _('管理 VoHive 核心、服务和基础配置；支持短信、多卡、eSIM/eUICC、轻量代理与 Bot 远程控制。')),
+					E('div', { 'class': 'cbi-map-descr' }, [
+						_('VoHive 的 OpenWrt 管理插件，在路由器界面中完成核心安装、服务控制、配置管理与 USB 驱动运维。'),
+						E('br'),
+						_('仓库地址：'),
+						E('a', { 'href': 'https://github.com/voorz/luci-app-vohive', 'target': '_blank' }, _('点击访问')),
+						E('br'),
+						E('span', { 'style': 'display:inline-flex; flex-wrap:wrap; gap:.4em; margin-top:.3em;' }, [
+							E('span', { 'class': 'ifacebadge', 'style': 'background:#eff5fb; color:#0066cc; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'License: MIT'),
+							E('span', { 'class': 'ifacebadge', 'style': 'background:#e0f5f0; color:#008055; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'OpenWrt'),
+							E('span', { 'class': 'ifacebadge', 'style': 'background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'LuCI'),
+							E('span', { 'class': 'ifacebadge', 'style': 'background:#fff3e0; color:#e65100; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'ipk | apk'),
+							E('span', { 'class': 'ifacebadge', 'style': 'background:#f3e5f5; color:#7b1fa2; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'arm64 | amd64 | armv7'),
+							E('a', { 'href': 'https://github.com/voorz/luci-app-vohive/releases', 'target': '_blank', 'class': 'ifacebadge', 'style': 'background:#e3f2fd; color:#1565c0; padding:2px 8px; border-radius:3px; font-size:12px; text-decoration:none;' }, _('Release'))
+						])
+					]),
 					tabs
 				]);
 			});
