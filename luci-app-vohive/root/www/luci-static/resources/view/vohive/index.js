@@ -1118,16 +1118,7 @@ return view.extend({
 			]));
 		}
 
-		if (status.exit_ip) {
-			var geoText = '';
-			if (status.geo_country) {
-				geoText = ' (' + [status.geo_country, status.geo_city].filter(Boolean).join(' · ') + ')';
-			}
-			connRows.push(E('tr', {}, [
-				E('td', {}, _('IP 地址')),
-				E('td', { 'style': 'font-family:monospace;' }, status.exit_ip + geoText)
-			]));
-		} else if (status.wwan_ipv4) {
+		if (status.wwan_ipv4) {
 			connRows.push(E('tr', {}, [
 				E('td', {}, _('IP 地址')),
 				E('td', { 'style': 'font-family:monospace;' }, status.wwan_ipv4)
