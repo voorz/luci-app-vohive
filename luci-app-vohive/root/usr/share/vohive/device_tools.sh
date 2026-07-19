@@ -81,8 +81,8 @@ bind_option_id() {
 
 	modprobe option 2>/dev/null || true
 	[ -w "$new_id" ] || return 0
-	# 避免重复注册：已存在则跳过
-	grep -q "^${vendor} ${product}$" "$new_id" 2>/dev/null && return 0
+	# 每次都写入 new_id，触发驱动重新探测未绑定的接口
+	# 重复写入是安全的：驱动会自动跳过已绑定的接口
 	printf '%s %s\n' "$vendor" "$product" > "$new_id" 2>/dev/null || true
 }
 
@@ -90,6 +90,12 @@ prepare_serial_driver() {
 	bind_option_id 2ca3 4006
 	bind_option_id 2c7c 0125
 	bind_option_id 2c7c 0124
+	# 等待串口设备注册
+	local waited=0
+	while [ "$waited" -lt 5 ] && [ -z "$(serial_ports)" ]; do
+		sleep 1
+		waited=$((waited + 1))
+	done
 }
 
 serial_ports() {

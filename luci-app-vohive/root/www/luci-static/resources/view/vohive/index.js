@@ -583,6 +583,7 @@ return view.extend({
 	renderCoreManagement: function(status, releases) {
 		var m = new form.Map('vohive');
 		var s, o;
+		var repoOk = releases.ok !== false && releases.latest;
 
 		s = m.section(form.NamedSection, 'main', 'vohive', _('核心管理'));
 		s.addremove = false;
@@ -602,6 +603,7 @@ return view.extend({
 			var value = uci.get('vohive', section_id, 'core_arch');
 			return value || status.core_arch_effective || 'arm64';
 		};
+		o.readonly = !repoOk;
 
 		o = s.option(form.ListValue, 'version', _('指定版本'));
 		o.value('latest', releases.loading ? _('最新版本（正在加载...）') : (releases.latest ? _('最新版本') + ' (' + releases.latest + ')' : _('最新版本')));
@@ -609,10 +611,14 @@ return view.extend({
 			o.value(version, version);
 		});
 		o.default = 'latest';
+		o.readonly = !repoOk;
 
 		o = s.option(form.Button, '_install_core', _('在线安装'));
 		o.inputstyle = 'apply';
+		o.readonly = !repoOk;
 		o.onclick = ui.createHandlerFn(this, function() {
+			if (!repoOk)
+				return;
 			return m.save().then(function() {
 				var version = uci.get('vohive', 'main', 'version') || 'latest';
 				var repo = uci.get('vohive', 'main', 'release_repo') || DEFAULT_CORE_REPO;
@@ -631,6 +637,17 @@ return view.extend({
 			node.querySelectorAll('input[id$=".release_repo"]').forEach(function(input) {
 				input.setAttribute('autocomplete', 'url');
 			});
+
+			/* 在 release_repo 输入框旁添加仓库状态指示灯 */
+			var repoInput = node.querySelector('input[id$=".release_repo"]');
+			if (repoInput && repoInput.parentNode) {
+				var indicator = E('span', {
+					'style': 'display:inline-block; width:10px; height:10px; border-radius:50%; margin-left:.5em; vertical-align:middle; background:%s;'.format(repoOk ? '#37a24d' : '#d9534f'),
+					'title': repoOk ? _('仓库可用') : _('仓库不可用或无 Release')
+				});
+				repoInput.parentNode.appendChild(indicator);
+			}
+
 			return node;
 		});
 	},
@@ -660,7 +677,7 @@ return view.extend({
 					'click': ui.createHandlerFn(this, function() {
 						return this.startTask('update_plugin', []);
 					})
-				}, _('更新 LuCI 插件'))
+				}, (plugin.ok !== false && !plugin.has_update) ? _('无需更新') : _('更新 LuCI 插件'))
 			])
 		];
 
