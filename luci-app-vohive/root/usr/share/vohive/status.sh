@@ -202,13 +202,26 @@ if [ -x "$BIN" ]; then
 	fi
 fi
 
-# Query data_connected every time (not cached — state can change quickly)
+# Query data_connected using cached token (30s cache to avoid API rate limiting)
 if [ "$is_running" = "1" ]; then
 	_dc_port="$(uci_get port '7575')"
-	_dc_token="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_dc_port}/api/auth/login" \
-		-X POST -H 'Content-Type: application/json' \
-		-d '{"username":"'"$(uci_get username 'admin')"'","password":"'"$(uci_get password 'admin')"'"}' \
-		2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
+	_dc_now="$(date +%s)"
+	_dc_last=0
+	[ -f /tmp/vohive/token_ts ] && _dc_last="$(cat /tmp/vohive/token_ts 2>/dev/null || echo 0)"
+	_dc_elapsed=$((_dc_now - _dc_last))
+
+	# Refresh token at most every 30 seconds
+	if [ "$_dc_elapsed" -ge 30 ] || [ ! -f /tmp/vohive/token_cache ]; then
+		printf '%s' "$_dc_now" > /tmp/vohive/token_ts 2>/dev/null || true
+		_dc_token="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_dc_port}/api/auth/login" \
+			-X POST -H 'Content-Type: application/json' \
+			-d '{"username":"'"$(uci_get username 'admin')"'","password":"'"$(uci_get password 'admin')"'"}' \
+			2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
+		[ -n "$_dc_token" ] && printf '%s' "$_dc_token" > /tmp/vohive/token_cache 2>/dev/null || true
+	else
+		_dc_token="$(cat /tmp/vohive/token_cache 2>/dev/null || true)"
+	fi
+
 	if [ -n "$_dc_token" ]; then
 		_dc_result="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_dc_port}/api/devices" \
 			-H "Authorization: Bearer $_dc_token" \

@@ -6,11 +6,6 @@
 #   network_setup.sh restore   Remove network.vohive + firewall config (router config only)
 #   network_setup.sh enable    Enable VoHive network via API only (no router config changes)
 #   network_setup.sh disable   Disable VoHive network via API only (no router config changes)
-#
-# setup/restore: manage OpenWrt router-side config (interface + firewall zone)
-# enable/disable: manage VoHive data connection via API
-# These are independent — users can configure the router without enabling the network,
-# and enable/disable the network without touching router config.
 
 set -eu
 
@@ -36,26 +31,32 @@ result_fail() {
 }
 
 # ---------------------------------------------------------------------------
-# VoHive API helpers
+# Get auth token (single login per script invocation)
 # ---------------------------------------------------------------------------
-vohive_token() {
+VOHIVE_TOKEN=""
+
+get_token() {
 	if ! /etc/init.d/vohive running >/dev/null 2>&1; then
 		return 1
 	fi
-	curl -s --connect-timeout 3 "http://127.0.0.1:${PORT}/api/auth/login" \
+	VOHIVE_TOKEN="$(curl -s --connect-timeout 3 "http://127.0.0.1:${PORT}/api/auth/login" \
 		-X POST -H 'Content-Type: application/json' \
 		-d '{"username":"'"$USERNAME"'","password":"'"$PASSWORD"'"}' \
-		2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true
+		2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
+	[ -n "$VOHIVE_TOKEN" ] || return 1
+	return 0
 }
 
-vohive_device_info() {
-	local token data dev_id iface
+# ---------------------------------------------------------------------------
+# Get device info using cached token
+# ---------------------------------------------------------------------------
+get_device_info() {
+	local data dev_id iface
 
-	token="$(vohive_token)" || return 1
-	[ -n "$token" ] || return 1
+	[ -n "$VOHIVE_TOKEN" ] || return 1
 
 	data="$(curl -s --connect-timeout 3 "http://127.0.0.1:${PORT}/api/devices" \
-		-H "Authorization: Bearer $token" 2>/dev/null || true)"
+		-H "Authorization: Bearer $VOHIVE_TOKEN" 2>/dev/null || true)"
 
 	dev_id="$(printf '%s' "$data" | jsonfilter -e '@.devices[0].id' 2>/dev/null || true)"
 	iface="$(printf '%s' "$data" | jsonfilter -e '@.devices[0].interface' 2>/dev/null || true)"
@@ -63,17 +64,18 @@ vohive_device_info() {
 	printf '%s %s' "$dev_id" "$iface"
 }
 
-vohive_network_control() {
+# ---------------------------------------------------------------------------
+# Enable/disable VoHive network via API (uses cached token)
+# ---------------------------------------------------------------------------
+network_control() {
 	local dev_id="$1"
 	local enabled="$2"
-	local token
 
-	token="$(vohive_token)" || return 1
-	[ -n "$token" ] || return 1
+	[ -n "$VOHIVE_TOKEN" ] || return 1
 
 	curl -s --connect-timeout 5 "http://127.0.0.1:${PORT}/api/devices/${dev_id}/network" \
 		-X PATCH -H 'Content-Type: application/json' \
-		-H "Authorization: Bearer $token" \
+		-H "Authorization: Bearer $VOHIVE_TOKEN" \
 		-d '{"enabled":'"$enabled"'}' \
 		2>/dev/null | jsonfilter -e '@.status' 2>/dev/null || true
 }
@@ -84,15 +86,7 @@ vohive_network_control() {
 get_wwan_iface() {
 	local info dev_id iface
 
-	info="$(vohive_device_info)" || {
-		for net in /sys/class/net/wwan*/; do
-			[ -d "$net" ] || continue
-			printf '%s' "$(basename "$net")"
-			return 0
-		done
-		return 1
-	}
-
+	info="$(get_device_info 2>/dev/null || true)"
 	dev_id="${info%% *}"
 	iface="${info#* }"
 	[ -n "$iface" ] && [ "$iface" != "$dev_id" ] && { printf '%s' "$iface"; return 0; }
@@ -133,26 +127,25 @@ in_zone_networks() {
 do_setup() {
 	local info dev_id wwan_iface wan_idx
 
-	info="$(vohive_device_info 2>/dev/null || true)"
+	get_token || result_fail "VoHive 服务未运行或认证失败"
+
+	info="$(get_device_info 2>/dev/null || true)"
 	dev_id="${info%% *}"
 	wwan_iface="${info#* }"
 	[ -n "$wwan_iface" ] && [ "$wwan_iface" != "$dev_id" ] || wwan_iface=""
 	[ -n "$wwan_iface" ] || wwan_iface="$(get_wwan_iface)" || result_fail "未找到 VoHive 管理的网络接口（wwan*）"
 	wan_idx="$(find_wan_zone_idx)" || result_fail "未找到防火墙 wan 区域"
 
-	# Step 1: Create network interface (proto=none, no interference with VoHive)
 	uci set network.vohive=interface
 	uci set network.vohive.proto='none'
 	uci set network.vohive.device="$wwan_iface"
 	uci commit network
 
-	# Step 2: Add vohive to wan firewall zone (idempotent)
 	if ! in_zone_networks "$wan_idx"; then
 		uci add_list firewall.@zone[$wan_idx].network=vohive
 		uci commit firewall
 	fi
 
-	# Step 3: Reload services
 	/etc/init.d/network reload 2>/dev/null || true
 	/etc/init.d/firewall reload 2>/dev/null || true
 
@@ -167,7 +160,6 @@ do_restore() {
 
 	wan_idx="$(find_wan_zone_idx 2>/dev/null || true)"
 
-	# Step 1: Remove vohive from wan zone network list
 	if [ -n "$wan_idx" ]; then
 		if in_zone_networks "$wan_idx"; then
 			uci del_list firewall.@zone[$wan_idx].network=vohive 2>/dev/null || true
@@ -175,13 +167,11 @@ do_restore() {
 		fi
 	fi
 
-	# Step 2: Delete network.vohive interface
 	if uci -q get network.vohive >/dev/null 2>&1; then
 		uci delete network.vohive
 		uci commit network
 	fi
 
-	# Step 3: Reload services
 	/etc/init.d/network reload 2>/dev/null || true
 	/etc/init.d/firewall reload 2>/dev/null || true
 
@@ -194,11 +184,13 @@ do_restore() {
 do_enable() {
 	local info dev_id
 
-	info="$(vohive_device_info 2>/dev/null || true)"
+	get_token || result_fail "VoHive 服务未运行或认证失败"
+
+	info="$(get_device_info 2>/dev/null || true)"
 	dev_id="${info%% *}"
 
 	if [ -n "$dev_id" ] && [ "$dev_id" != "" ]; then
-		vohive_network_control "$dev_id" true >/dev/null 2>&1 || true
+		network_control "$dev_id" true >/dev/null 2>&1 || true
 		sleep 3
 		result_ok "已启用网络"
 	else
@@ -212,11 +204,13 @@ do_enable() {
 do_disable() {
 	local info dev_id
 
-	info="$(vohive_device_info 2>/dev/null || true)"
+	get_token || result_fail "VoHive 服务未运行或认证失败"
+
+	info="$(get_device_info 2>/dev/null || true)"
 	dev_id="${info%% *}"
 
 	if [ -n "$dev_id" ] && [ "$dev_id" != "" ]; then
-		vohive_network_control "$dev_id" false >/dev/null 2>&1 || true
+		network_control "$dev_id" false >/dev/null 2>&1 || true
 		sleep 1
 		result_ok "已禁用网络"
 	else
