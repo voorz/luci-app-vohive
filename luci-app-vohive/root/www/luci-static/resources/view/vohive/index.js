@@ -1578,6 +1578,9 @@ return view.extend({
 
 		var rows = [
 			[ _('服务状态'), statusBadge(status.running) ],
+			[ _('数据连接'), status.running ? E('span', {
+				'style': 'color:%s; font-weight:700;'.format(status.data_connected ? '#37a24d' : '#d9534f')
+			}, status.data_connected ? _('已启用') : _('未启用')) : _('未运行') ],
 			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
 			[ _('插件版本'), E('span', {}, [ pluginVersionLink(pluginRepo, pluginVersion), ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), pluginLatest ]) ],
 			[ _('监听地址'), status.running ? E('a', { 'href': webUrl, 'target': '_blank' }, listenAddress) : listenAddress ],

@@ -166,6 +166,7 @@ core_arch_effective="$(resolve_asset_arch "$core_arch_config")"
 core_installed=0
 core_version="--"
 core_arch=""
+data_connected="false"
 if [ -x "$BIN" ]; then
 	core_installed=1
 	core_arch="$(cat "$ARCH_FILE" 2>/dev/null || true)"
@@ -196,6 +197,10 @@ if [ -x "$BIN" ]; then
 					core_version="$_api_version"
 					printf '%s\n' "$_api_version" > "$VERSION_FILE"
 				fi
+				_api_data_connected="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_api_port}/api/devices" \
+					-H "Authorization: Bearer $_api_token" \
+					2>/dev/null | jsonfilter -e '@.devices[0].data_connected' 2>/dev/null || true)"
+				[ "$_api_data_connected" = "true" ] && data_connected="true"
 			fi
 		fi
 	fi
@@ -261,6 +266,7 @@ printf '"plugin_version":"%s",' "$(json_escape "$plugin_version")"
 printf '"core_arch":"%s",' "$(json_escape "$core_arch")"
 printf '"core_arch_config":"%s",' "$(json_escape "$core_arch_config")"
 printf '"core_arch_effective":"%s",' "$(json_escape "$core_arch_effective")"
+printf '"data_connected":%s,' "$data_connected"
 printf '"host":"%s",' "$(json_escape "$host")"
 printf '"port":"%s",' "$(json_escape "$port")"
 printf '"data_path":"%s",' "$(json_escape "$data_path")"
