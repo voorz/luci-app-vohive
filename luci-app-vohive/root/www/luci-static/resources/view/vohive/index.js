@@ -1353,7 +1353,7 @@ return view.extend({
 
 		var rows = [
 			[ _('服务状态'), statusBadge(status.running) ],
-			[ _('核心版本'), E('span', {}, [ releaseLink(releaseRepo, coreVersion), ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
+			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
 			[ _('插件版本'), E('span', {}, [ pluginVersionLink(pluginRepo, pluginVersion), ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), pluginLatest ]) ],
 			[ _('监听地址'), status.running ? E('a', { 'href': webUrl, 'target': '_blank' }, listenAddress) : listenAddress ],
 			[ _('CPU / 内存占用'), status.running ? cpuMemoryText(status) : _('未运行') ],
