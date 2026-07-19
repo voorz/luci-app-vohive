@@ -172,7 +172,7 @@ fi
 # Output JSON
 # ---------------------------------------------------------------------------
 printf '{'
-printf '"vohive_running":%s,' "$([ /etc/init.d/vohive running >/dev/null 2>&1 ] && printf true || printf false)"
+printf '"vohive_running":%s,' "$(/etc/init.d/vohive running >/dev/null 2>&1 && printf true || printf false)"
 printf '"data_connected":%s,' "$data_connected"
 printf '"network_enabled":%s,' "$network_enabled"
 printf '"network_connected":%s,' "$network_connected"
