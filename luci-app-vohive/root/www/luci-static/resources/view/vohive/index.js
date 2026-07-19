@@ -10,7 +10,10 @@
 /* Inject indeterminate progress bar animation */
 (function() {
 	var style = document.createElement('style');
-	style.textContent = '@keyframes vohive-indeterminate { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }';
+	style.textContent = [
+		'@keyframes vohive-indeterminate { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }',
+		'.cbi-modal > * { max-width: 100%; box-sizing: border-box; }'
+	].join('\n');
 	document.head.appendChild(style);
 })();
 
@@ -322,7 +325,7 @@ return view.extend({
 		});
 
 		ui.showModal(_('手动上传核心'), [
-			E('div', { 'style': 'margin-bottom:1em;' }, [
+			E('div', { 'style': 'width:100%; box-sizing:border-box; margin-bottom:1em;' }, [
 				E('p', { 'style': 'margin-bottom:.5em;' }, _('选择本地的 VoHive 核心二进制文件进行上传安装。')),
 				E('p', { 'style': 'color:var(--text-color-medium, #999); font-size:12px;' }, _('文件大小不超过 100 MB，上传后将自动校验并安装。'))
 			]),
@@ -361,7 +364,7 @@ return view.extend({
 		var progressBar = E('div', { 'class': 'cbi-progressbar', 'style': 'margin:.5em 0;' }, progressFill);
 
 		ui.showModal(_('正在上传核心文件'), [
-			E('div', {}, [
+			E('div', { 'style': 'width:100%; box-sizing:border-box;' }, [
 				E('p', { 'style': 'margin-bottom:.5em;' }, _('%s (%s)').format(file.name, formatBytes(file.size))),
 				progressBar,
 				progressLabel
@@ -460,7 +463,7 @@ return view.extend({
 		var pluginDone = success && status.type == 'update_plugin';
 		var isInstalling = !terminal && status.stage === 'install';
 
-		dom.content(this.taskModalBody, E('div', { 'style': 'min-width:min(620px, 86vw);' }, [
+		dom.content(this.taskModalBody, E('div', { 'style': 'width:100%; max-width:min(620px, 86vw); box-sizing:border-box;' }, [
 			E('div', {
 				'class': 'alert-message %s'.format(success ? 'success' : (state == 'failed' || state == 'canceled' ? 'warning' : 'info'))
 			}, pluginDone ? _('LuCI 插件已更新，3 秒后刷新页面。') : message),
