@@ -4,7 +4,7 @@ set -eu
 
 . /usr/share/vohive/lib.sh
 
-PLUGIN_REPO="kedaya2025/luci-app-vohive"
+PLUGIN_REPO="$DEFAULT_PLUGIN_REPO"
 DOWNLOAD_DIR="/tmp/vohive/download"
 INSTALL_LOG="/tmp/vohive-plugin-install.log"
 

@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# Create default /etc/config/vohive on first boot if it doesn't exist.
+# This replaces shipping the config file in the package (which caused
+# opkg conffile conflicts on reinstall). Existing user config is preserved.
+
+[ -f /etc/config/vohive ] && exit 0
+
+. /usr/share/vohive/lib.sh 2>/dev/null
+
+cat > /etc/config/vohive <<EOF
+config vohive 'main'
+	option enabled '0'
+	option host '0.0.0.0'
+	option port '7575'
+	option username 'admin'
+	option password 'admin'
+	option log_level 'info'
+	option data_path '/etc/vohive/data'
+	option release_repo '${DEFAULT_CORE_REPO:-https://github.com/voorz/vohive-next}'
+	option version ''
+EOF
+
+exit 0

@@ -18,7 +18,7 @@ fail() {
 	exit 1
 }
 
-repo="$(github_repo_slug "$(uci_get release_repo 'https://github.com/voorz/vohive-next')")"
+repo="$(github_repo_slug "$(uci_get release_repo "$DEFAULT_CORE_REPO")")"
 validate_github_repo "$repo" || fail "Invalid GitHub repository: $repo"
 
 rollback_version="$(cat "$BACKUP_VERSION_FILE" 2>/dev/null || true)"

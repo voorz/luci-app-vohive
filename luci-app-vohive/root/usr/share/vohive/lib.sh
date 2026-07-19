@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# Default repositories — single source of truth.
+# Change here and every script that sources lib.sh picks it up.
+DEFAULT_CORE_REPO='https://github.com/voorz/vohive-next'
+DEFAULT_PLUGIN_REPO='voorz/luci-app-vohive'
+
 json_escape() {
 	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g; s/\r//g; :a; N; $!ba; s/\n/\\n/g'
 }

@@ -19,7 +19,7 @@ ARCH_FILE="$BIN_DIR/arch"
 BACKUP_ARCH_FILE="$BIN_DIR/arch.bak"
 TEMP_BACKUP="$DOWNLOAD_DIR/vohive.prev"
 TEMP_CURRENT="$DOWNLOAD_DIR/vohive.current"
-PLUGIN_REPO="kedaya2025/luci-app-vohive"
+PLUGIN_REPO="$DEFAULT_PLUGIN_REPO"
 
 [ -n "$id" ] || exit 1
 [ -n "$type" ] || exit 1
@@ -72,7 +72,7 @@ install_core() {
 	if [ -n "$repo_input" ]; then
 		repo="$(github_repo_slug "$repo_input")"
 	else
-		repo="$(github_repo_slug "$(uci_get release_repo 'https://github.com/voorz/vohive-next')")"
+		repo="$(github_repo_slug "$(uci_get release_repo "$DEFAULT_CORE_REPO")")"
 	fi
 	validate_github_repo "$repo" || fail "Invalid GitHub repository: $repo"
 
@@ -164,7 +164,7 @@ install_core() {
 rollback_core() {
 	local repo rollback_version rollback_arch asset url downloaded total release_json was_running current_version current_arch
 
-	repo="$(github_repo_slug "$(uci_get release_repo 'https://github.com/voorz/vohive-next')")"
+	repo="$(github_repo_slug "$(uci_get release_repo "$DEFAULT_CORE_REPO")")"
 	validate_github_repo "$repo" || fail "Invalid GitHub repository: $repo"
 
 	rollback_version="$(cat "$BACKUP_VERSION_FILE" 2>/dev/null || true)"

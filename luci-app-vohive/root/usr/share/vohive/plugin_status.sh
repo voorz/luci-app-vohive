@@ -4,7 +4,7 @@ set -eu
 
 . /usr/share/vohive/lib.sh
 
-PLUGIN_REPO="kedaya2025/luci-app-vohive"
+PLUGIN_REPO="$DEFAULT_PLUGIN_REPO"
 VERSION_FILE="/usr/share/vohive/plugin_version"
 limit="${1:-5}"
 

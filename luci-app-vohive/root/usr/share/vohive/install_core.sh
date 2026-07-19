@@ -18,7 +18,7 @@ fail() {
 	exit 1
 }
 
-repo="$(github_repo_slug "$(uci_get release_repo 'https://github.com/voorz/vohive-next')")"
+repo="$(github_repo_slug "$(uci_get release_repo "$DEFAULT_CORE_REPO")")"
 version="${1:-}"
 [ -n "$version" ] || version="$(uci_get version 'latest')"
 [ -n "$version" ] || version="latest"

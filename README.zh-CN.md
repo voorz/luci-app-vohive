@@ -15,7 +15,7 @@
   <a href="https://github.com/openwrt/luci"><img src="https://img.shields.io/badge/LuCI-Application-green" alt="LuCI" /></a>
   <img src="https://img.shields.io/badge/Package-ipk%20%7C%20apk-orange" alt="Package formats" />
   <img src="https://img.shields.io/badge/Arch-arm64%20%7C%20amd64%20%7C%20armv7-informational" alt="Architectures" />
-  <a href="https://github.com/kedaya2025/luci-app-vohive/releases"><img src="https://img.shields.io/github/v/release/kedaya2025/luci-app-vohive?include_prereleases&label=release" alt="Release" /></a>
+  <a href="https://github.com/voorz/luci-app-vohive/releases"><img src="https://img.shields.io/github/v/release/voorz/luci-app-vohive?include_prereleases&label=release" alt="Release" /></a>
 </p>
 
 <p align="center">
@@ -83,7 +83,7 @@ uname -m
 
 ### 2. 仅安装 LuCI 插件
 
-从 [Releases](https://github.com/kedaya2025/luci-app-vohive/releases) 下载对应格式的包：
+从 [Releases](https://github.com/voorz/luci-app-vohive/releases) 下载对应格式的包：
 
 **OpenWrt 24.x（opkg）**
 
@@ -123,7 +123,7 @@ opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-armv7_1.6.1-r1_all
 ## 相关链接
 
 - [VoHive 核心项目](https://github.com/voorz/vohive-next)
-- [本插件 Releases](https://github.com/kedaya2025/luci-app-vohive/releases)
+- [本插件 Releases](https://github.com/voorz/luci-app-vohive/releases)
 - [OpenWrt 官方文档](https://openwrt.org/docs/start)
 - [LuCI 项目](https://github.com/openwrt/luci)
 

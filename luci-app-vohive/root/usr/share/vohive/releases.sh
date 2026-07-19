@@ -4,7 +4,7 @@ set -eu
 
 . /usr/share/vohive/lib.sh
 
-repo="$(github_repo_slug "$(uci_get release_repo 'https://github.com/voorz/vohive-next')")"
+repo="$(github_repo_slug "$(uci_get release_repo "$DEFAULT_CORE_REPO")")"
 limit="${1:-5}"
 
 case "$limit" in

@@ -25,19 +25,15 @@ endef
 define Build/Compile
 endef
 
-define Package/luci-app-vohive/conffiles
-/etc/config/vohive
-endef
-
 define Package/luci-app-vohive/install
-	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DIR) $(1)/usr/share/vohive
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/vohive
 
-	$(INSTALL_CONF) ./root/etc/config/vohive $(1)/etc/config/vohive
+	$(INSTALL_BIN) ./root/etc/uci-defaults/vohive $(1)/etc/uci-defaults/vohive
 	$(INSTALL_BIN) ./root/etc/init.d/vohive $(1)/etc/init.d/vohive
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-vohive.json $(1)/usr/share/luci/menu.d/
 	$(INSTALL_DATA) ./root/usr/share/rpcd/acl.d/luci-app-vohive.json $(1)/usr/share/rpcd/acl.d/

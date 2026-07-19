@@ -15,7 +15,7 @@
   <a href="https://github.com/openwrt/luci"><img src="https://img.shields.io/badge/LuCI-Application-green" alt="LuCI" /></a>
   <img src="https://img.shields.io/badge/Package-ipk%20%7C%20apk-orange" alt="Package formats" />
   <img src="https://img.shields.io/badge/Arch-arm64%20%7C%20amd64%20%7C%20armv7-informational" alt="Architectures" />
-  <a href="https://github.com/kedaya2025/luci-app-vohive/releases"><img src="https://img.shields.io/github/v/release/kedaya2025/luci-app-vohive?include_prereleases&label=release" alt="Release" /></a>
+  <a href="https://github.com/voorz/luci-app-vohive/releases"><img src="https://img.shields.io/github/v/release/voorz/luci-app-vohive?include_prereleases&label=release" alt="Release" /></a>
 </p>
 
 <p align="center">
@@ -89,7 +89,7 @@ uname -m
 
 ### 2. Install the LuCI plugin only
 
-Download the matching package from [Releases](https://github.com/kedaya2025/luci-app-vohive/releases):
+Download the matching package from [Releases](https://github.com/voorz/luci-app-vohive/releases):
 
 **OpenWrt 24.x (opkg)**
 
@@ -129,7 +129,7 @@ Issues and Pull Requests are welcome. Please describe your environment (OpenWrt 
 ## Related Links
 
 - [VoHive core project](https://github.com/voorz/vohive-next)
-- [This plugin's Releases](https://github.com/kedaya2025/luci-app-vohive/releases)
+- [This plugin's Releases](https://github.com/voorz/luci-app-vohive/releases)
 - [OpenWrt docs](https://openwrt.org/docs/start)
 - [LuCI project](https://github.com/openwrt/luci)
 

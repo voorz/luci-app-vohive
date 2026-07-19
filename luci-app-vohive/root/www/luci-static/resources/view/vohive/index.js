@@ -100,8 +100,11 @@ function statusBadge(active) {
 	}, active ? _('运行中') : _('已停止'));
 }
 
+var DEFAULT_CORE_REPO = 'https://github.com/voorz/vohive-next';
+var DEFAULT_PLUGIN_REPO = 'voorz/luci-app-vohive';
+
 function releaseRepoSlug(repo) {
-	return (repo || 'https://github.com/voorz/vohive-next')
+	return (repo || DEFAULT_CORE_REPO)
 		.replace(/^https?:\/\/github\.com\//, '')
 		.replace(/^git@github\.com:/, '')
 		.replace(/\/$/, '')
@@ -459,7 +462,7 @@ return view.extend({
 		s.addremove = false;
 
 		o = s.option(form.Value, 'release_repo', _('Release 仓库地址'));
-		o.default = 'https://github.com/voorz/vohive-next';
+		o.default = DEFAULT_CORE_REPO;
 		o.validate = function(section_id, value) {
 			return /^(https?:\/\/github\.com\/)?[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/.test(value) || _('必须是 GitHub 仓库地址');
 		};
@@ -486,7 +489,7 @@ return view.extend({
 		o.onclick = ui.createHandlerFn(this, function() {
 			return m.save().then(function() {
 				var version = uci.get('vohive', 'main', 'version') || 'latest';
-				var repo = uci.get('vohive', 'main', 'release_repo') || 'https://github.com/voorz/vohive-next';
+				var repo = uci.get('vohive', 'main', 'release_repo') || DEFAULT_CORE_REPO;
 				var arch = uci.get('vohive', 'main', 'core_arch') || '';
 				return this.startTask('install_core', [ version, repo, arch ]);
 			}.bind(this));
@@ -502,7 +505,7 @@ return view.extend({
 	},
 
 	renderPluginManagement: function(plugin) {
-		var repo = plugin.repo || 'kedaya2025/luci-app-vohive';
+		var repo = plugin.repo || DEFAULT_PLUGIN_REPO;
 		var current = plugin.current || _('未知');
 		var latest = plugin.loading ? loadingText(_('正在加载...')) : pluginVersionLink(repo, plugin.latest || _('未知'));
 		if (!plugin.loading && plugin.latest && plugin.ok !== false)
@@ -1169,7 +1172,7 @@ return view.extend({
 			listenAddress = '%s (%s)'.format(listenAddress, status.port_status);
 
 		var releaseRepo = releaseRepoSlug(uci.get('vohive', 'main', 'release_repo'));
-		var pluginRepo = 'kedaya2025/luci-app-vohive';
+		var pluginRepo = DEFAULT_PLUGIN_REPO;
 		var coreVersion = status.core_installed ? (status.core_version || _('已安装')) : _('未安装');
 		var pluginVersion = status.plugin_version || _('未知');
 
