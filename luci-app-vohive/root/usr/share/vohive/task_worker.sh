@@ -261,7 +261,7 @@ probe_device() {
 
 upload_core() {
 	local upload_file="$DOWNLOAD_DIR/vohive-core-upload"
-	local version="手动上传"
+	local version="--"
 	local asset_arch was_running api_port api_token api_version
 
 	[ -s "$upload_file" ] || fail "上传文件不存在或为空"
@@ -287,24 +287,22 @@ upload_core() {
 	mkdir -p "$BIN_DIR"
 	cp -f "$upload_file" "$BIN"
 	chmod 0755 "$BIN"
-	printf '%s\n' "$version" > "$VERSION_FILE"
 	printf '%s\n' "$asset_arch" > "$ARCH_FILE"
 
-	if [ "$was_running" = "1" ]; then
-		task_write_status "$id" "$type" "running" "restart" "正在重启 VoHive 服务" "" 0 0 0 0
-		if ! /etc/init.d/vohive start >/tmp/vohive-start.log 2>&1; then
-			fail "核心已安装但服务启动失败"
-		fi
+	task_write_status "$id" "$type" "running" "restart" "正在启动 VoHive 服务" "" 0 0 0 0
+	if ! /etc/init.d/vohive start >/tmp/vohive-start.log 2>&1; then
+		fail "核心已安装但服务启动失败"
 	fi
 
-	# 尝试从核心 API 获取真实版本号
+	# 等待服务就绪后从核心 API 获取真实版本号
+	sleep 3
 	api_port="$(uci_get port '7575')"
-	api_token="$(curl -s http://127.0.0.1:$api_port/api/auth/login \
+	api_token="$(curl -s --connect-timeout 3 http://127.0.0.1:$api_port/api/auth/login \
 		-X POST -H 'Content-Type: application/json' \
 		-d '{"username":"'"$(uci_get username 'admin')"'","password":"'"$(uci_get password 'admin')"'"}' \
 		2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
 	if [ -n "$api_token" ]; then
-		api_version="$(curl -s http://127.0.0.1:$api_port/api/system/info \
+		api_version="$(curl -s --connect-timeout 3 http://127.0.0.1:$api_port/api/system/info \
 			-H "Authorization: Bearer $api_token" \
 			2>/dev/null | jsonfilter -e '@.version' 2>/dev/null || true)"
 		[ -n "$api_version" ] && version="$api_version"

@@ -162,14 +162,34 @@ core_arch_config="$(uci_get core_arch '')"
 core_arch_effective="$(resolve_asset_arch "$core_arch_config")"
 
 core_installed=0
-core_version=""
+core_version="--"
 core_arch=""
 if [ -x "$BIN" ]; then
 	core_installed=1
-	core_version="$(cat "$VERSION_FILE" 2>/dev/null || true)"
-	[ -n "$core_version" ] || core_version="已安装，版本未知"
 	core_arch="$(cat "$ARCH_FILE" 2>/dev/null || true)"
 	[ -n "$core_arch" ] || core_arch="$core_arch_effective"
+
+	# 核心运行时优先从 API 获取版本号
+	if [ "$is_running" = "1" ]; then
+		_api_port="$(uci_get port '7575')"
+		_api_token="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_api_port}/api/auth/login" \
+			-X POST -H 'Content-Type: application/json' \
+			-d '{"username":"'"$(uci_get username 'admin')"'","password":"'"$(uci_get password 'admin')"'"}' \
+			2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
+		if [ -n "$_api_token" ]; then
+			_api_version="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_api_port}/api/system/info" \
+				-H "Authorization: Bearer $_api_token" \
+				2>/dev/null | jsonfilter -e '@.version' 2>/dev/null || true)"
+			if [ -n "$_api_version" ]; then
+				core_version="$_api_version"
+				printf '%s\n' "$_api_version" > "$VERSION_FILE"
+			fi
+		fi
+	else
+		# 核心未运行时读版本文件
+		_file_version="$(cat "$VERSION_FILE" 2>/dev/null || true)"
+		[ -n "$_file_version" ] && core_version="$_file_version"
+	fi
 fi
 
 default_password=0
