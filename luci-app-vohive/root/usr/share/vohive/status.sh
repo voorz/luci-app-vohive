@@ -197,12 +197,23 @@ if [ -x "$BIN" ]; then
 					core_version="$_api_version"
 					printf '%s\n' "$_api_version" > "$VERSION_FILE"
 				fi
-				_api_data_connected="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_api_port}/api/devices" \
-					-H "Authorization: Bearer $_api_token" \
-					2>/dev/null | jsonfilter -e '@.devices[0].data_connected' 2>/dev/null || true)"
-				[ "$_api_data_connected" = "true" ] && data_connected="true"
 			fi
 		fi
+	fi
+fi
+
+# Query data_connected every time (not cached — state can change quickly)
+if [ "$is_running" = "1" ]; then
+	_dc_port="$(uci_get port '7575')"
+	_dc_token="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_dc_port}/api/auth/login" \
+		-X POST -H 'Content-Type: application/json' \
+		-d '{"username":"'"$(uci_get username 'admin')"'","password":"'"$(uci_get password 'admin')"'"}' \
+		2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
+	if [ -n "$_dc_token" ]; then
+		_dc_result="$(curl -s --connect-timeout 3 "http://127.0.0.1:${_dc_port}/api/devices" \
+			-H "Authorization: Bearer $_dc_token" \
+			2>/dev/null | jsonfilter -e '@.devices[0].data_connected' 2>/dev/null || true)"
+		[ "$_dc_result" = "true" ] && data_connected="true"
 	fi
 fi
 
