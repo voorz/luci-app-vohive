@@ -1196,16 +1196,16 @@ return view.extend({
 				'click': ui.createHandlerFn(self, function() {
 					return self.networkAction('enable');
 				})
-			}, _('启用 4G 网络')));
+			}, _('启用网络')));
 		} else {
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-reset',
 				'click': ui.createHandlerFn(self, function() {
-					if (!window.confirm(_('确认禁用 4G 网络吗？这将移除网络接口和防火墙配置。')))
+					if (!window.confirm(_('确认禁用网络吗？这将移除网络接口和防火墙配置。')))
 						return Promise.resolve();
 					return self.networkAction('disable');
 				})
-			}, _('禁用 4G 网络')));
+			}, _('禁用网络')));
 		}
 
 		actionBtns.push(E('button', {
@@ -1234,7 +1234,7 @@ return view.extend({
 
 		ui.showModal(_('网络配置'), [
 			E('div', { 'class': 'cbi-section' }, [
-				E('em', { 'class': 'spinning' }, action === 'enable' ? _('正在启用 4G 网络...') : _('正在禁用 4G 网络...'))
+				E('em', { 'class': 'spinning' }, action === 'enable' ? _('正在启用网络...') : _('正在禁用网络...'))
 			])
 		]);
 

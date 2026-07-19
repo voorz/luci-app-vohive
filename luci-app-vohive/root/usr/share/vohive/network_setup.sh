@@ -2,12 +2,15 @@
 # network_setup.sh — Enable / disable / restore VoHive network integration
 #
 # Usage:
-#   network_setup.sh enable        Create network.vohive (proto=none) and add to wan zone
-#   network_setup.sh disable       Remove network.vohive and remove from wan zone
+#   network_setup.sh enable        Create network.vohive (proto=none), add to wan zone, enable VoHive network
+#   network_setup.sh disable       Disable VoHive network, remove network.vohive, remove from wan zone
 #   network_setup.sh restore       Same as disable — restores original config
 #
-# After enable, the script reloads network/firewall and waits for VoHive
-# to re-establish the QMI data connection (network reload briefly disrupts it).
+# Enable flow:
+#   1. Create network.vohive (proto=none) so netifd/firewall recognizes the wwan interface
+#   2. Add 'vohive' to the wan firewall zone's network list (for masquerade/NAT)
+#   3. Reload network + firewall
+#   4. Call VoHive API PATCH /api/devices/{id}/network {"enabled":true} to establish data connection
 
 set -eu
 
@@ -33,6 +36,86 @@ result_fail() {
 }
 
 # ---------------------------------------------------------------------------
+# Get auth token from VoHive API
+# ---------------------------------------------------------------------------
+vohive_token() {
+	if ! /etc/init.d/vohive running >/dev/null 2>&1; then
+		return 1
+	fi
+	curl -s --connect-timeout 3 "http://127.0.0.1:${PORT}/api/auth/login" \
+		-X POST -H 'Content-Type: application/json' \
+		-d '{"username":"'"$USERNAME"'","password":"'"$PASSWORD"'"}' \
+		2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Get device ID and interface name from VoHive API
+# ---------------------------------------------------------------------------
+vohive_device_info() {
+	local token data dev_id iface
+
+	token="$(vohive_token)" || return 1
+	[ -n "$token" ] || return 1
+
+	data="$(curl -s --connect-timeout 3 "http://127.0.0.1:${PORT}/api/devices" \
+		-H "Authorization: Bearer $token" 2>/dev/null || true)"
+
+	dev_id="$(printf '%s' "$data" | jsonfilter -e '@.devices[0].id' 2>/dev/null || true)"
+	iface="$(printf '%s' "$data" | jsonfilter -e '@.devices[0].interface' 2>/dev/null || true)"
+
+	printf '%s %s' "$dev_id" "$iface"
+}
+
+# ---------------------------------------------------------------------------
+# Enable/disable VoHive network via API
+#   vohive_network_control <device_id> <true|false>
+# ---------------------------------------------------------------------------
+vohive_network_control() {
+	local dev_id="$1"
+	local enabled="$2"
+	local token
+
+	token="$(vohive_token)" || return 1
+	[ -n "$token" ] || return 1
+
+	curl -s --connect-timeout 5 "http://127.0.0.1:${PORT}/api/devices/${dev_id}/network" \
+		-X PATCH -H 'Content-Type: application/json' \
+		-H "Authorization: Bearer $token" \
+		-d '{"enabled":'"$enabled"'}' \
+		2>/dev/null | jsonfilter -e '@.status' 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Get the wwan interface name from VoHive API or sysfs
+# ---------------------------------------------------------------------------
+get_wwan_iface() {
+	local info dev_id iface
+
+	info="$(vohive_device_info)" || {
+		# Fallback: scan sysfs for wwan* interfaces
+		for net in /sys/class/net/wwan*/; do
+			[ -d "$net" ] || continue
+			printf '%s' "$(basename "$net")"
+			return 0
+		done
+		return 1
+	}
+
+	dev_id="${info%% *}"
+	iface="${info#* }"
+
+	[ -n "$iface" ] && [ "$iface" != "$dev_id" ] && { printf '%s' "$iface"; return 0; }
+
+	# Fallback: scan sysfs
+	for net in /sys/class/net/wwan*/; do
+		[ -d "$net" ] || continue
+		printf '%s' "$(basename "$net")"
+		return 0
+	done
+	return 1
+}
+
+# ---------------------------------------------------------------------------
 # Find the wan zone index in firewall config
 # ---------------------------------------------------------------------------
 find_wan_zone_idx() {
@@ -47,71 +130,31 @@ find_wan_zone_idx() {
 }
 
 # ---------------------------------------------------------------------------
-# Get the wwan interface name from VoHive API or sysfs
+# Check if vohive is already in a zone's network list
 # ---------------------------------------------------------------------------
-get_wwan_iface() {
-	local token data iface
+in_zone_networks() {
+	local idx="$1"
+	local current_networks net
 
-	if /etc/init.d/vohive running >/dev/null 2>&1; then
-		token="$(curl -s --connect-timeout 3 "http://127.0.0.1:${PORT}/api/auth/login" \
-			-X POST -H 'Content-Type: application/json' \
-			-d '{"username":"'"$USERNAME"'","password":"'"$PASSWORD"'"}' \
-			2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
-		if [ -n "$token" ]; then
-			data="$(curl -s --connect-timeout 3 "http://127.0.0.1:${PORT}/api/devices" \
-				-H "Authorization: Bearer $token" 2>/dev/null || true)"
-			iface="$(printf '%s' "$data" | jsonfilter -e '@.devices[0].interface' 2>/dev/null || true)"
-			[ -n "$iface" ] && { printf '%s' "$iface"; return 0; }
-		fi
-	fi
-
-	# Fallback: scan sysfs for wwan* interfaces
-	for net in /sys/class/net/wwan*/; do
-		[ -d "$net" ] || continue
-		printf '%s' "$(basename "$net")"
-		return 0
+	current_networks="$(uci -q get "firewall.@zone[$idx].network" 2>/dev/null || true)"
+	for net in $current_networks; do
+		[ "$net" = "vohive" ] && return 0
 	done
-
 	return 1
 }
 
 # ---------------------------------------------------------------------------
-# Trigger VoHive to re-establish data connection after network reload
-# ---------------------------------------------------------------------------
-reconnect_vohive() {
-	local token
-
-	# Wait for network stack to settle
-	sleep 3
-
-	if ! /etc/init.d/vohive running >/dev/null 2>&1; then
-		return 0
-	fi
-
-	# Try to toggle network off/on via VoHive API
-	token="$(curl -s --connect-timeout 3 "http://127.0.0.1:${PORT}/api/auth/login" \
-		-X POST -H 'Content-Type: application/json' \
-		-d '{"username":"'"$USERNAME"'","password":"'"$PASSWORD"'"}' \
-		2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
-
-	if [ -n "$token" ]; then
-		# Try disabling and re-enabling network via API
-		# If no such API exists, fall back to service restart
-		curl -s --connect-timeout 5 "http://127.0.0.1:${PORT}/api/devices/actions/rescan" \
-			-H "Authorization: Bearer $token" >/dev/null 2>&1 || true
-	fi
-
-	# Give VoHive time to re-establish the data connection
-	sleep 5
-}
-
-# ---------------------------------------------------------------------------
-# Enable: create network.vohive + add to wan zone
+# Enable: create network.vohive + add to wan zone + enable VoHive network
 # ---------------------------------------------------------------------------
 do_enable() {
-	local wwan_iface wan_idx
+	local info dev_id wwan_iface wan_idx
 
-	wwan_iface="$(get_wwan_iface)" || result_fail "未找到 VoHive 管理的网络接口（wwan*）"
+	# Get device info from VoHive API
+	info="$(vohive_device_info 2>/dev/null || true)"
+	dev_id="${info%% *}"
+	wwan_iface="${info#* }"
+	[ -n "$wwan_iface" ] && [ "$wwan_iface" != "$dev_id" ] || wwan_iface=""
+	[ -n "$wwan_iface" ] || wwan_iface="$(get_wwan_iface)" || result_fail "未找到 VoHive 管理的网络接口（wwan*）"
 	wan_idx="$(find_wan_zone_idx)" || result_fail "未找到防火墙 wan 区域"
 
 	# Step 1: Create network interface (proto=none, no interference with VoHive)
@@ -120,15 +163,9 @@ do_enable() {
 	uci set network.vohive.device="$wwan_iface"
 	uci commit network
 
-	# Step 2: Add vohive to wan firewall zone (idempotent — check first)
-	local current_networks existing
-	current_networks="$(uci -q get "firewall.@zone[$wan_idx].network" 2>/dev/null || true)"
-	existing="false"
-	for net in $current_networks; do
-		[ "$net" = "vohive" ] && { existing="true"; break; }
-	done
-	if [ "$existing" = "false" ]; then
-		uci add_list "firewall.@zone[$wan_idx].network='vohive'"
+	# Step 2: Add vohive to wan firewall zone (idempotent)
+	if ! in_zone_networks "$wan_idx"; then
+		uci add_list firewall.@zone[$wan_idx].network=vohive
 		uci commit firewall
 	fi
 
@@ -136,31 +173,38 @@ do_enable() {
 	/etc/init.d/network reload 2>/dev/null || true
 	/etc/init.d/firewall reload 2>/dev/null || true
 
-	# Step 4: Re-establish VoHive data connection (network reload may disrupt it)
-	reconnect_vohive
+	# Step 4: Enable VoHive network via API (establish data connection)
+	if [ -n "$dev_id" ] && [ "$dev_id" != "" ]; then
+		sleep 2
+		vohive_network_control "$dev_id" true >/dev/null 2>&1 || true
+		sleep 5
+	fi
 
-	result_ok "已启用 4G 网络（接口 $wwan_iface 已加入防火墙 wan 域）"
+	result_ok "已启用网络（接口 $wwan_iface 已加入防火墙 wan 域）"
 }
 
 # ---------------------------------------------------------------------------
-# Disable / Restore: remove network.vohive + remove from wan zone
+# Disable / Restore: disable VoHive network + remove config
 # ---------------------------------------------------------------------------
 do_disable() {
-	local wan_idx
+	local info dev_id wan_idx
+
+	# Get device ID from VoHive API
+	info="$(vohive_device_info 2>/dev/null || true)"
+	dev_id="${info%% *}"
+
+	# Step 0: Disable VoHive network via API first
+	if [ -n "$dev_id" ] && [ "$dev_id" != "" ]; then
+		vohive_network_control "$dev_id" false >/dev/null 2>&1 || true
+		sleep 1
+	fi
 
 	wan_idx="$(find_wan_zone_idx 2>/dev/null || true)"
 
 	# Step 1: Remove vohive from wan zone network list
 	if [ -n "$wan_idx" ]; then
-		local current_networks
-		current_networks="$(uci -q get "firewall.@zone[$wan_idx].network" 2>/dev/null || true)"
-		# Check if vohive is in the network list
-		local found="false"
-		for net in $current_networks; do
-			[ "$net" = "vohive" ] && { found="true"; break; }
-		done
-		if [ "$found" = "true" ]; then
-			uci del_list "firewall.@zone[$wan_idx].network='vohive'" 2>/dev/null || true
+		if in_zone_networks "$wan_idx"; then
+			uci del_list firewall.@zone[$wan_idx].network=vohive 2>/dev/null || true
 			uci commit firewall
 		fi
 	fi
@@ -175,7 +219,7 @@ do_disable() {
 	/etc/init.d/network reload 2>/dev/null || true
 	/etc/init.d/firewall reload 2>/dev/null || true
 
-	result_ok "已禁用 4G 网络（已移除网络接口和防火墙配置）"
+	result_ok "已禁用网络（已移除网络接口和防火墙配置）"
 }
 
 # ---------------------------------------------------------------------------
