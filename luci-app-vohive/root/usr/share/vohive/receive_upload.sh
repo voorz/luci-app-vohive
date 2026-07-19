@@ -7,7 +7,7 @@
 
 set -eu
 
-UPLOAD_DIR="/tmp/vohive/upload"
+UPLOAD_DIR="/tmp/vohive/download"
 UPLOAD_FILE="$UPLOAD_DIR/vohive-core-upload"
 
 mode="${1:-}"
