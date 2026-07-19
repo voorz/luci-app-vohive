@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="static/vohive-wrt.png" alt="VoHive × OpenWrt — Vohive Dashboard for Luci-App" width="720" />
+  <img src="static/vohive-wrt.png" alt="VoHive × OpenWrt — Vohive Dashboard for Luci-App" width="100%" />
 </p>
 
 <h1 align="center">luci-app-vohive</h1>
