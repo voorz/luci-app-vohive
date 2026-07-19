@@ -169,33 +169,31 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
-# Geolocation (cached 10 minutes)
+# Exit IP + Geolocation (cached 10 minutes, direct query to ip-api.com)
 # ---------------------------------------------------------------------------
+exit_ip=""
 geo_country=""
 geo_city=""
-geo_isp=""
 
-if [ -n "$public_ip" ]; then
-	_geo_now="$(date +%s)"
-	_geo_last=0
-	[ -f /tmp/vohive/geo_ts ] && _geo_last="$(cat /tmp/vohive/geo_ts 2>/dev/null || echo 0)"
-	_geo_elapsed=$((_geo_now - _geo_last))
+_geo_now="$(date +%s)"
+_geo_last=0
+[ -f /tmp/vohive/geo_ts ] && _geo_last="$(cat /tmp/vohive/geo_ts 2>/dev/null || echo 0)"
+_geo_elapsed=$((_geo_now - _geo_last))
 
-	if [ "$_geo_elapsed" -ge 600 ] || [ ! -f /tmp/vohive/geo_cache ]; then
-		# Cache expired — query ip-api.com
-		printf '%s' "$_geo_now" > /tmp/vohive/geo_ts 2>/dev/null || true
-		_geo_result="$(curl -s --connect-timeout 5 "http://ip-api.com/json/${public_ip}" 2>/dev/null || true)"
-		if [ -n "$_geo_result" ]; then
-			printf '%s' "$_geo_result" > /tmp/vohive/geo_cache 2>/dev/null || true
-		fi
+if [ "$_geo_elapsed" -ge 600 ] || [ ! -f /tmp/vohive/geo_cache ]; then
+	printf '%s' "$_geo_now" > /tmp/vohive/geo_ts 2>/dev/null || true
+	# Query ip-api.com without IP param — returns caller's exit IP + geolocation
+	_geo_result="$(curl -s --connect-timeout 5 "http://ip-api.com/json/" 2>/dev/null || true)"
+	if [ -n "$_geo_result" ]; then
+		printf '%s' "$_geo_result" > /tmp/vohive/geo_cache 2>/dev/null || true
 	fi
+fi
 
-	if [ -f /tmp/vohive/geo_cache ]; then
-		_cached="$(cat /tmp/vohive/geo_cache 2>/dev/null || true)"
-		geo_country="$(printf '%s' "$_cached" | jsonfilter -e '@.country' 2>/dev/null || true)"
-		geo_city="$(printf '%s' "$_cached" | jsonfilter -e '@.city' 2>/dev/null || true)"
-		geo_isp="$(printf '%s' "$_cached" | jsonfilter -e '@.isp' 2>/dev/null || true)"
-	fi
+if [ -f /tmp/vohive/geo_cache ]; then
+	_cached="$(cat /tmp/vohive/geo_cache 2>/dev/null || true)"
+	exit_ip="$(printf '%s' "$_cached" | jsonfilter -e '@.query' 2>/dev/null || true)"
+	geo_country="$(printf '%s' "$_cached" | jsonfilter -e '@.country' 2>/dev/null || true)"
+	geo_city="$(printf '%s' "$_cached" | jsonfilter -e '@.city' 2>/dev/null || true)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -210,7 +208,7 @@ printf '"interface":"%s",' "$(json_escape "$vohive_iface")"
 printf '"public_ip":"%s",' "$(json_escape "$public_ip")"
 printf '"geo_country":"%s",' "$(json_escape "$geo_country")"
 printf '"geo_city":"%s",' "$(json_escape "$geo_city")"
-printf '"geo_isp":"%s",' "$(json_escape "$geo_isp")"
+printf '"exit_ip":"%s",' "$(json_escape "$exit_ip")"
 printf '"signal_dbm":"%s",' "$(json_escape "$signal_dbm")"
 printf '"operator":"%s",' "$(json_escape "$operator_name")"
 printf '"network_mode":"%s",' "$(json_escape "$network_mode")"
