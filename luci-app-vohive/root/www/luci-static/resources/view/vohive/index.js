@@ -1841,17 +1841,8 @@ updateStatusNode: function(status) {
 						_('VoHive 的 OpenWrt 管理插件，在路由器界面中完成核心安装、服务控制、配置管理与 USB 驱动运维。'),
 						E('br'),
 						_('仓库地址：'),
-						E('a', { 'href': 'https://github.com/voorz/luci-app-vohive', 'target': '_blank' }, _('点击访问')),
-						E('br'),
-						E('span', { 'style': 'display:inline-flex; flex-wrap:wrap; gap:.4em; margin-top:.3em;' }, [
-							E('span', { 'class': 'ifacebadge', 'style': 'background:#eff5fb; color:#0066cc; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'License: MIT'),
-							E('span', { 'class': 'ifacebadge', 'style': 'background:#e0f5f0; color:#008055; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'OpenWrt'),
-							E('span', { 'class': 'ifacebadge', 'style': 'background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'LuCI'),
-							E('span', { 'class': 'ifacebadge', 'style': 'background:#fff3e0; color:#e65100; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'ipk | apk'),
-							E('span', { 'class': 'ifacebadge', 'style': 'background:#f3e5f5; color:#7b1fa2; padding:2px 8px; border-radius:3px; font-size:12px;' }, 'arm64 | amd64 | armv7'),
-							E('a', { 'href': 'https://github.com/voorz/luci-app-vohive/releases', 'target': '_blank', 'class': 'ifacebadge', 'style': 'background:#e3f2fd; color:#1565c0; padding:2px 8px; border-radius:3px; font-size:12px; text-decoration:none;' }, _('Release'))
-						])
-					]),
+				E('a', { 'href': 'https://github.com/voorz/luci-app-vohive', 'target': '_blank' }, _('点击访问'))
+			]),
 					tabs
 				]);
 			});
