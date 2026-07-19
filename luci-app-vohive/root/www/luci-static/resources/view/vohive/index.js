@@ -1082,6 +1082,7 @@ return view.extend({
 
 		var vohiveRunning = status.vohive_running;
 		var dataConnected = status.data_connected;
+		var networkEnabled = status.network_enabled;
 		var netConfigured = status.netifd_configured;
 		var fwConfigured = status.firewall_configured;
 		var integrated = netConfigured && fwConfigured;
@@ -1090,10 +1091,17 @@ return view.extend({
 		var connRows = [];
 
 		connRows.push(E('tr', {}, [
-			E('td', { 'style': 'width:30%;' }, _('VoHive 服务')),
+			E('td', { 'style': 'width:30%;' }, _('核心状态')),
 			E('td', {}, E('span', {
 				'style': 'color:%s; font-weight:700;'.format(vohiveRunning ? '#37a24d' : '#d9534f')
 			}, vohiveRunning ? _('运行中') : _('未运行')))
+		]));
+
+		connRows.push(E('tr', {}, [
+			E('td', {}, _('网络服务')),
+			E('td', {}, E('span', {
+				'style': 'color:%s; font-weight:700;'.format(status.network_enabled ? '#37a24d' : '#d9534f')
+			}, status.network_enabled ? _('已启用') : _('已禁用')))
 		]));
 
 		connRows.push(E('tr', {}, [
@@ -1110,17 +1118,19 @@ return view.extend({
 			]));
 		}
 
-		if (status.wwan_ipv4) {
+		if (status.public_ip) {
+			var geoText = '';
+			if (status.geo_country) {
+				geoText = ' (' + [status.geo_country, status.geo_city].filter(Boolean).join(' · ') + ')';
+			}
+			connRows.push(E('tr', {}, [
+				E('td', {}, _('IP 地址')),
+				E('td', { 'style': 'font-family:monospace;' }, status.public_ip + geoText)
+			]));
+		} else if (status.wwan_ipv4) {
 			connRows.push(E('tr', {}, [
 				E('td', {}, _('IP 地址')),
 				E('td', { 'style': 'font-family:monospace;' }, status.wwan_ipv4)
-			]));
-		}
-
-		if (status.public_ip) {
-			connRows.push(E('tr', {}, [
-				E('td', {}, _('公网 IP')),
-				E('td', { 'style': 'font-family:monospace;' }, status.public_ip)
 			]));
 		}
 
@@ -1211,10 +1221,10 @@ return view.extend({
 			}, _('撤销配置')));
 		}
 
-		// VoHive network: enable or disable (independent of router config)
-		if (dataConnected) {
+		// VoHive network: enable or disable based on switch state (not data connection)
+		if (networkEnabled) {
 			actionBtns.push(E('button', {
-				'class': 'btn cbi-button cbi-button-neutral',
+				'class': 'btn cbi-button cbi-button-reset',
 				'click': ui.createHandlerFn(self, function() {
 					return self.networkAction('disable');
 				})
@@ -1578,9 +1588,9 @@ return view.extend({
 
 		var rows = [
 			[ _('服务状态'), statusBadge(status.running) ],
-			[ _('蜂窝网络'), status.running ? E('span', {
+			[ _('数据连接'), status.running ? E('span', {
 				'style': 'color:%s; font-weight:700;'.format(status.data_connected ? '#37a24d' : '#d9534f')
-			}, status.data_connected ? _('已启用') : _('未启用')) : _('未运行') ],
+			}, status.data_connected ? _('已连接') : _('未连接')) : _('未运行') ],
 			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
 			[ _('插件版本'), E('span', {}, [ pluginVersionLink(pluginRepo, pluginVersion), ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), pluginLatest ]) ],
 			[ _('监听地址'), status.running ? E('a', { 'href': webUrl, 'target': '_blank' }, listenAddress) : listenAddress ],
