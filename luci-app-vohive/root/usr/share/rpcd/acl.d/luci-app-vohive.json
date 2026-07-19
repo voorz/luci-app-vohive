@@ -2,21 +2,23 @@
 	"luci-app-vohive": {
 		"description": "Grant access to VoHive LuCI app",
 		"read": {
-			"uci": [ "vohive" ],
-			"file": {
-				"/usr/share/vohive/status.sh": [ "exec" ],
-				"/usr/share/vohive/logs.sh": [ "exec" ],
-				"/usr/share/vohive/releases.sh": [ "exec" ],
-				"/usr/share/vohive/plugin_status.sh": [ "exec" ],
-				"/usr/share/vohive/device_probe.sh": [ "exec" ],
-				"/usr/share/vohive/task_status.sh": [ "exec" ],
-				"/usr/share/vohive/usb_status.sh": [ "exec" ]
-			}
+		"uci": [ "vohive", "network", "firewall" ],
+		"file": {
+			"/usr/share/vohive/status.sh": [ "exec" ],
+			"/usr/share/vohive/logs.sh": [ "exec" ],
+			"/usr/share/vohive/releases.sh": [ "exec" ],
+			"/usr/share/vohive/plugin_status.sh": [ "exec" ],
+			"/usr/share/vohive/device_probe.sh": [ "exec" ],
+			"/usr/share/vohive/task_status.sh": [ "exec" ],
+			"/usr/share/vohive/usb_status.sh": [ "exec" ],
+			"/usr/share/vohive/network_status.sh": [ "exec" ]
+		}
 		},
 		"write": {
-			"uci": [ "vohive" ],
-			"file": {
-				"/usr/share/vohive/apply_config.sh": [ "exec" ],
+		"uci": [ "vohive", "network", "firewall" ],
+		"file": {
+			"/usr/share/vohive/apply_config.sh": [ "exec" ],
+			"/usr/share/vohive/network_setup.sh": [ "exec" ],
 				"/usr/share/vohive/install_core.sh": [ "exec" ],
 				"/usr/share/vohive/service.sh": [ "exec" ],
 				"/usr/share/vohive/clear_logs.sh": [ "exec" ],

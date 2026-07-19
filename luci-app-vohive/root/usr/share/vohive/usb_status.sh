@@ -109,16 +109,19 @@ scan_devices() {
 	# 先收集 wwan 接口信息（用于设备级 net_state 计算）
 	local wwan_ifaces=""
 	local wwan_lookup=""
+	local wwan_carrier_lookup=""
 	local first_wwan=1
 	for net in /sys/class/net/wwan*/; do
 		[ -d "$net" ] || continue
-		local wname wstate
+		local wname wstate wcarrier
 		wname=$(basename "$net")
 		wstate=$(sysfs_read "${net}operstate")
+		wcarrier=$(sysfs_read "${net}carrier")
 		wwan_lookup="${wwan_lookup} ${wname}:${wstate}"
+		wwan_carrier_lookup="${wwan_carrier_lookup} ${wname}:${wcarrier}"
 		[ "$first_wwan" = "1" ] || wwan_ifaces="${wwan_ifaces},"
 		first_wwan=0
-		wwan_ifaces="${wwan_ifaces}{\"name\":\"$(json_str "$wname")\",\"state\":\"$(json_str "$wstate")\"}"
+		wwan_ifaces="${wwan_ifaces}{\"name\":\"$(json_str "$wname")\",\"state\":\"$(json_str "$wstate")\",\"carrier\":\"$(json_str "$wcarrier")\"}"
 	done
 
 	# 收集 /dev/cdc-wdm*
@@ -245,10 +248,17 @@ scan_devices() {
 
 		# 计算设备级网络接口状态
 		local dev_net_state=""
+		local dev_net_carrier=""
 		if [ -n "$dev_net_iface" ]; then
 			for pair in $wwan_lookup; do
 				if [ "${pair%%:*}" = "$dev_net_iface" ]; then
 					dev_net_state="${pair#*:}"
+					break
+				fi
+			done
+			for pair in $wwan_carrier_lookup; do
+				if [ "${pair%%:*}" = "$dev_net_iface" ]; then
+					dev_net_carrier="${pair#*:}"
 					break
 				fi
 			done
@@ -261,7 +271,7 @@ scan_devices() {
 		[ "$first_dev" = "1" ] || devices_json="${devices_json},"
 		first_dev=0
 
-		devices_json="${devices_json}{\"dev\":\"$(json_str "$dev")\",\"vid\":\"${vid}\",\"pid\":\"${pid}\",\"manufacturer\":\"${manufacturer}\",\"product\":\"${product}\",\"serial\":\"${serial}\",\"speed\":\"$(json_str "$speed")\",\"busnum\":\"$(json_str "$busnum")\",\"devnum\":\"$(json_str "$devnum")\",\"friendly_name\":\"$(json_str "$friendly_name")\",\"module_ready\":${dev_has_qmi},\"net_iface\":\"$(json_str "$dev_net_iface")\",\"net_state\":\"$(json_str "$dev_net_state")\",\"interfaces\":[${ifaces_json}]}"
+		devices_json="${devices_json}{\"dev\":\"$(json_str "$dev")\",\"vid\":\"${vid}\",\"pid\":\"${pid}\",\"manufacturer\":\"${manufacturer}\",\"product\":\"${product}\",\"serial\":\"${serial}\",\"speed\":\"$(json_str "$speed")\",\"busnum\":\"$(json_str "$busnum")\",\"devnum\":\"$(json_str "$devnum")\",\"friendly_name\":\"$(json_str "$friendly_name")\",\"module_ready\":${dev_has_qmi},\"net_iface\":\"$(json_str "$dev_net_iface")\",\"net_state\":\"$(json_str "$dev_net_state")\",\"net_carrier\":\"$(json_str "$dev_net_carrier")\",\"interfaces\":[${ifaces_json}]}"
 	done
 
 	printf '{"ok":true,"filter_vid":"%s","filter_pid":"%s","devices":[%s],"wwan_ifaces":[%s],"cdc_devs":[%s]}\n' \

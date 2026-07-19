@@ -1056,6 +1056,214 @@ return view.extend({
 	},
 
 	/* ---------------------------------------------------------- */
+	/* 网络管理 Tab                                               */
+	/* ---------------------------------------------------------- */
+
+	loadNetworkStatus: function() {
+		return fs.exec_direct('/usr/share/vohive/network_status.sh', [])
+			.catch(function(e) {
+				return JSON.stringify({ ok: false, message: e.message || String(e) });
+			})
+			.then(function(text) {
+				return parseJson(text);
+			});
+	},
+
+	renderNetworkContent: function(status) {
+		var self = this;
+		var nodes = [];
+
+		if (!status || status.ok === false) {
+			nodes.push(E('div', { 'class': 'cbi-section' }, [
+				E('em', {}, status && status.message ? status.message : _('无法获取网络状态'))
+			]));
+			return E('div', {}, nodes);
+		}
+
+		var vohiveRunning = status.vohive_running;
+		var dataConnected = status.data_connected;
+		var netConfigured = status.netifd_configured;
+		var fwConfigured = status.firewall_configured;
+		var integrated = netConfigured && fwConfigured;
+
+		/* Connection status section */
+		var connRows = [];
+
+		connRows.push(E('tr', {}, [
+			E('td', { 'style': 'width:30%;' }, _('VoHive 服务')),
+			E('td', {}, E('span', {
+				'style': 'color:%s; font-weight:700;'.format(vohiveRunning ? '#37a24d' : '#d9534f')
+			}, vohiveRunning ? _('运行中') : _('未运行')))
+		]));
+
+		connRows.push(E('tr', {}, [
+			E('td', {}, _('数据连接')),
+			E('td', {}, E('span', {
+				'style': 'color:%s; font-weight:700;'.format(dataConnected ? '#37a24d' : '#d9534f')
+			}, dataConnected ? _('已连接') : _('未连接')))
+		]));
+
+		if (status.interface) {
+			connRows.push(E('tr', {}, [
+				E('td', {}, _('网络接口')),
+				E('td', { 'style': 'font-family:monospace;' }, status.interface)
+			]));
+		}
+
+		if (status.wwan_ipv4) {
+			connRows.push(E('tr', {}, [
+				E('td', {}, _('IP 地址')),
+				E('td', { 'style': 'font-family:monospace;' }, status.wwan_ipv4)
+			]));
+		}
+
+		if (status.public_ip) {
+			connRows.push(E('tr', {}, [
+				E('td', {}, _('公网 IP')),
+				E('td', { 'style': 'font-family:monospace;' }, status.public_ip)
+			]));
+		}
+
+		if (status.operator) {
+			connRows.push(E('tr', {}, [
+				E('td', {}, _('运营商')),
+				E('td', {}, '%s%s'.format(
+					status.operator,
+					status.network_mode ? ' (' + status.network_mode + ')' : ''
+				))
+			]));
+		}
+
+		if (status.signal_dbm) {
+			var signalDbm = parseInt(status.signal_dbm);
+			var signalQuality = signalDbm >= -70 ? _('优秀') : (signalDbm >= -85 ? _('良好') : (signalDbm >= -100 ? _('一般') : _('较弱')));
+			connRows.push(E('tr', {}, [
+				E('td', {}, _('信号强度')),
+				E('td', {}, '%s dBm (%s)'.format(status.signal_dbm, signalQuality))
+			]));
+		}
+
+		nodes.push(E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('连接状态')),
+			E('table', { 'class': 'table' }, connRows)
+		]));
+
+		/* Router integration section */
+		var integRows = [];
+
+		integRows.push(E('tr', {}, [
+			E('td', { 'style': 'width:30%;' }, _('网络接口配置')),
+			E('td', {}, E('span', {
+				'style': 'color:%s; font-weight:700;'.format(netConfigured ? '#37a24d' : '#d9534f')
+			}, netConfigured ? _('已创建 (%s)').format(status.netifd_device || 'vohive') : _('未创建')))
+		]));
+
+		integRows.push(E('tr', {}, [
+			E('td', {}, _('防火墙 NAT')),
+			E('td', {}, E('span', {
+				'style': 'color:%s; font-weight:700;'.format(fwConfigured ? '#37a24d' : '#d9534f')
+			}, fwConfigured ? _('已加入 wan 域') : _('未配置')))
+		]));
+
+		if (status.default_routes && status.default_routes.length > 0) {
+			var routeText = status.default_routes.map(function(r) {
+				return '%s (metric %s)'.format(r.dev, r.metric);
+			}).join(' · ');
+			integRows.push(E('tr', {}, [
+				E('td', {}, _('默认路由')),
+				E('td', { 'style': 'font-family:monospace; font-size:12px;' }, routeText)
+			]));
+		}
+
+		integRows.push(E('tr', {}, [
+			E('td', {}, _('路由优先级')),
+			E('td', {}, E('span', {
+				'style': 'color:%s; font-weight:700;'.format(status.is_primary ? '#37a24d' : '#d58512')
+			}, status.is_primary ? _('主力（4G 优先）') : _('备用（其他 WAN 优先）')))
+		]));
+
+		nodes.push(E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('路由器集成')),
+			E('table', { 'class': 'table' }, integRows)
+		]));
+
+		/* Action section */
+		var actionBtns = [];
+
+		if (!integrated) {
+			actionBtns.push(E('button', {
+				'class': 'btn cbi-button cbi-button-apply',
+				'click': ui.createHandlerFn(self, function() {
+					return self.networkAction('enable');
+				})
+			}, _('启用 4G 网络')));
+		} else {
+			actionBtns.push(E('button', {
+				'class': 'btn cbi-button cbi-button-reset',
+				'click': ui.createHandlerFn(self, function() {
+					if (!window.confirm(_('确认禁用 4G 网络吗？这将移除网络接口和防火墙配置。')))
+						return Promise.resolve();
+					return self.networkAction('disable');
+				})
+			}, _('禁用 4G 网络')));
+		}
+
+		actionBtns.push(E('button', {
+			'class': 'btn cbi-button cbi-button-neutral',
+			'click': ui.createHandlerFn(self, function() {
+				return self.loadNetworkPane(self.networkPane);
+			})
+		}, _('刷新状态')));
+
+		nodes.push(E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('操作')),
+			E('div', { 'style': 'display:flex; gap:.5em; flex-wrap:wrap;' }, actionBtns),
+			E('p', { 'style': 'margin-top:.75em; color:var(--text-color-medium); font-size:13px;' }, _(
+				'启用后将自动创建不配置协议的网络接口并加入防火墙 wan 域，' +
+				'使 4G 数据连接获得 NAT 转发能力。' +
+				'配置过程中 VoHive 数据连接会短暂中断并自动恢复。'
+			))
+		]));
+
+		return E('div', {}, nodes);
+	},
+
+	networkAction: function(action) {
+		var self = this;
+		var script = '/usr/share/vohive/network_setup.sh';
+
+		ui.showModal(_('网络配置'), [
+			E('div', { 'class': 'cbi-section' }, [
+				E('em', { 'class': 'spinning' }, action === 'enable' ? _('正在启用 4G 网络...') : _('正在禁用 4G 网络...'))
+			])
+		]);
+
+		return fs.exec_direct(script, [ action ])
+			.then(function(text) {
+				ui.hideModal();
+				var result = parseJson(text);
+				notifyResult(text);
+				return self.loadNetworkPane(self.networkPane);
+			})
+			.catch(function(e) {
+				ui.hideModal();
+				ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
+			});
+	},
+
+	loadNetworkPane: function(networkPane) {
+		this.networkPane = networkPane;
+		dom.content(networkPane, E('div', { 'class': 'cbi-section' },
+			E('em', { 'class': 'spinning' }, _('正在读取网络状态...'))));
+
+		var self = this;
+		return this.loadNetworkStatus()
+			.then(function(status) {
+				dom.content(networkPane, self.renderNetworkContent(status));
+			});
+	},
+
+	/* ---------------------------------------------------------- */
 	/* 驱动管理 Tab                                               */
 	/* ---------------------------------------------------------- */
 
@@ -1095,12 +1303,12 @@ return view.extend({
 		var subtitle = [ dev.manufacturer, dev.product ].filter(Boolean).join('  ·  ');
 
 		var netStatus;
-		if (dev.net_iface && dev.net_state === 'up') {
-			netStatus = _('活跃');
+		if (dev.net_iface && (dev.net_state === 'up' || dev.net_carrier === '1')) {
+			netStatus = _('活跃（数据通路已建立）');
 		} else if (dev.net_iface) {
-			netStatus = _('不活跃');
+			netStatus = _('就绪（驱动已绑定，接口已创建，等待拨号）');
 		} else {
-			netStatus = _('无');
+			netStatus = _('无（未绑定 QMI 驱动）');
 		}
 
 		var qmiCandidates = ifaces.filter(function(i) { return i.is_qmi_candidate; });
@@ -1583,8 +1791,18 @@ updateStatusNode: function(status) {
 			var self = this;
 
 			return this.renderOverview(status, releases, plugin, deviceDeps).then(function(overviewEl) {
+				var networkPane = E('div', { 'data-tab': 'network', 'data-tab-title': _('网络管理') }, [
+					E('div', { 'class': 'cbi-section' }, E('em', {}, _('点击网络管理后读取连接状态。')))
+				]);
+				self.networkPane = networkPane;
+
+				networkPane.addEventListener('cbi-tab-active', function() {
+					self.loadNetworkPane(networkPane);
+				});
+
 				var panes = E('div', {}, [
 					E('div', { 'data-tab': 'overview', 'data-tab-title': _('概览') }, overviewEl),
+					networkPane,
 					driverPane,
 					devicePane,
 					E('div', { 'data-tab': 'config', 'data-tab-title': _('基础配置') }, rendered[0]),
