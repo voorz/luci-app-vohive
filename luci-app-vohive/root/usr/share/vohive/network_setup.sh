@@ -2,15 +2,13 @@
 # network_setup.sh — Enable / disable / restore VoHive network integration
 #
 # Usage:
-#   network_setup.sh enable        Create network.vohive (proto=none), add to wan zone, enable VoHive network
-#   network_setup.sh disable       Disable VoHive network, remove network.vohive, remove from wan zone
-#   network_setup.sh restore       Same as disable — restores original config
+#   network_setup.sh enable        Create network.vohive, add to wan zone, enable VoHive network
+#   network_setup.sh disable       Disable VoHive network via API only (keep router config)
+#   network_setup.sh restore       Remove network.vohive + firewall config, restore original state
 #
-# Enable flow:
-#   1. Create network.vohive (proto=none) so netifd/firewall recognizes the wwan interface
-#   2. Add 'vohive' to the wan firewall zone's network list (for masquerade/NAT)
-#   3. Reload network + firewall
-#   4. Call VoHive API PATCH /api/devices/{id}/network {"enabled":true} to establish data connection
+# enable:  Router config + VoHive API → full integration
+# disable: VoHive API only → network off but config stays (can re-enable without reload)
+# restore: Remove everything → back to pre-plugin state
 
 set -eu
 
@@ -92,7 +90,6 @@ get_wwan_iface() {
 	local info dev_id iface
 
 	info="$(vohive_device_info)" || {
-		# Fallback: scan sysfs for wwan* interfaces
 		for net in /sys/class/net/wwan*/; do
 			[ -d "$net" ] || continue
 			printf '%s' "$(basename "$net")"
@@ -106,7 +103,6 @@ get_wwan_iface() {
 
 	[ -n "$iface" ] && [ "$iface" != "$dev_id" ] && { printf '%s' "$iface"; return 0; }
 
-	# Fallback: scan sysfs
 	for net in /sys/class/net/wwan*/; do
 		[ -d "$net" ] || continue
 		printf '%s' "$(basename "$net")"
@@ -149,7 +145,6 @@ in_zone_networks() {
 do_enable() {
 	local info dev_id wwan_iface wan_idx
 
-	# Get device info from VoHive API
 	info="$(vohive_device_info 2>/dev/null || true)"
 	dev_id="${info%% *}"
 	wwan_iface="${info#* }"
@@ -184,12 +179,29 @@ do_enable() {
 }
 
 # ---------------------------------------------------------------------------
-# Disable / Restore: disable VoHive network + remove config
+# Disable: just disable VoHive network via API (keep router config)
 # ---------------------------------------------------------------------------
 do_disable() {
+	local info dev_id
+
+	info="$(vohive_device_info 2>/dev/null || true)"
+	dev_id="${info%% *}"
+
+	if [ -n "$dev_id" ] && [ "$dev_id" != "" ]; then
+		vohive_network_control "$dev_id" false >/dev/null 2>&1 || true
+		result_ok "已禁用网络（路由器配置保留，可随时重新启用）"
+	else
+		result_fail "无法获取 VoHive 设备信息"
+	fi
+}
+
+# ---------------------------------------------------------------------------
+# Restore: remove network.vohive + firewall config, restore original state
+# ---------------------------------------------------------------------------
+do_restore() {
 	local info dev_id wan_idx
 
-	# Get device ID from VoHive API
+	# Get device ID from VoHive API (to disable network before removing config)
 	info="$(vohive_device_info 2>/dev/null || true)"
 	dev_id="${info%% *}"
 
@@ -219,7 +231,7 @@ do_disable() {
 	/etc/init.d/network reload 2>/dev/null || true
 	/etc/init.d/firewall reload 2>/dev/null || true
 
-	result_ok "已禁用网络（已移除网络接口和防火墙配置）"
+	result_ok "已撤销配置（已移除网络接口和防火墙配置，恢复原始状态）"
 }
 
 # ---------------------------------------------------------------------------
@@ -229,8 +241,11 @@ case "$ACTION" in
 	enable)
 		do_enable
 		;;
-	disable|restore)
+	disable)
 		do_disable
+		;;
+	restore)
+		do_restore
 		;;
 	*)
 		result_fail "用法: network_setup.sh <enable|disable|restore>"
