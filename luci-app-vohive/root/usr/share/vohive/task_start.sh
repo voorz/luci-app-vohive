@@ -8,7 +8,7 @@ type="${1:-}"
 shift || true
 
 case "$type" in
-	install_core|rollback_core|update_plugin|convert_identity|switch_usbnet|probe_device) ;;
+	install_core|rollback_core|upload_core|update_plugin|convert_identity|switch_usbnet|probe_device) ;;
 	*) printf '{"ok":false,"message":"不支持的任务类型"}\n'; exit 1 ;;
 esac
 

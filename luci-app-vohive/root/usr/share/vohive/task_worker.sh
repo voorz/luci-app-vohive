@@ -354,12 +354,75 @@ probe_device() {
 	fi
 }
 
+upload_core() {
+	local upload_file="$DOWNLOAD_DIR/vohive-core-upload"
+	local version="手动上传"
+	local asset_arch was_running
+
+	[ -s "$upload_file" ] || fail "上传文件不存在或为空"
+
+	task_log "$id" "校验上传的核心文件"
+	task_write_status "$id" "$type" "running" "verify" "正在校验核心文件" "" 0 0 0 0
+	chmod +x "$upload_file"
+	if command -v file >/dev/null 2>&1; then
+		file "$upload_file" | grep -Eq 'ELF|executable' || {
+			rm -f "$upload_file"
+			fail "上传文件不是有效的可执行文件"
+		}
+	fi
+
+	asset_arch="$(resolve_asset_arch "$(uci_get core_arch '')" 2>/dev/null || true)"
+	[ -n "$asset_arch" ] || asset_arch="unknown"
+
+	was_running=0
+	/etc/init.d/vohive running >/dev/null 2>&1 && was_running=1
+	task_write_status "$id" "$type" "running" "install" "正在安装核心" "" 0 0 0 0
+	[ "$was_running" = "0" ] || /etc/init.d/vohive stop || true
+
+	if [ -x "$BIN" ]; then
+		cp -f "$BIN" "$TEMP_BACKUP"
+		if [ -s "$VERSION_FILE" ]; then
+			cp -f "$VERSION_FILE" "$BACKUP_VERSION_FILE"
+		else
+			printf '已安装，版本未知\n' > "$BACKUP_VERSION_FILE"
+		fi
+		if [ -s "$ARCH_FILE" ]; then
+			cp -f "$ARCH_FILE" "$BACKUP_ARCH_FILE"
+		else
+			printf 'unknown\n' > "$BACKUP_ARCH_FILE"
+		fi
+	fi
+
+	cp -f "$upload_file" "$BIN"
+	chmod 0755 "$BIN"
+	printf '%s\n' "$version" > "$VERSION_FILE"
+	printf '%s\n' "$asset_arch" > "$ARCH_FILE"
+
+	if [ "$was_running" = "1" ]; then
+		task_write_status "$id" "$type" "running" "restart" "正在重启 VoHive 服务" "" 0 0 0 0
+		if ! /etc/init.d/vohive start >/tmp/vohive-start.log 2>&1; then
+			if [ -f "$TEMP_BACKUP" ]; then
+				cp -f "$TEMP_BACKUP" "$BIN"
+				[ -s "$BACKUP_VERSION_FILE" ] && cp -f "$BACKUP_VERSION_FILE" "$VERSION_FILE"
+				[ -s "$BACKUP_ARCH_FILE" ] && cp -f "$BACKUP_ARCH_FILE" "$ARCH_FILE"
+				/etc/init.d/vohive start >/dev/null 2>&1 || true
+			fi
+			fail "核心已安装但服务启动失败，已尝试回滚"
+		fi
+	fi
+
+	post_install_qmi_check "$was_running"
+	rm -f "$TEMP_BACKUP" "$upload_file" "$BIN_DIR/vohive.bak"
+	finish_ok "已安装 VoHive 核心（手动上传）"
+}
+
 task_mkdirs
 task_log "$id" "任务启动"
 
 case "$type" in
 	install_core) install_core "$@" ;;
 	rollback_core) rollback_core ;;
+	upload_core) upload_core ;;
 	update_plugin) update_plugin ;;
 	convert_identity) convert_identity "$@" ;;
 	switch_usbnet) switch_usbnet "$@" ;;

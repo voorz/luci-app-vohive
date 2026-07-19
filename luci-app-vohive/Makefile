@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-vohive
-PKG_VERSION?=0.1.39
+PKG_VERSION?=0.1.21
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=VoHive
@@ -31,10 +31,12 @@ define Package/luci-app-vohive/install
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DIR) $(1)/usr/share/vohive
+	$(INSTALL_DIR) $(1)/www/cgi-bin
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/vohive
 
 	$(INSTALL_BIN) ./root/etc/uci-defaults/vohive $(1)/etc/uci-defaults/vohive
 	$(INSTALL_BIN) ./root/etc/init.d/vohive $(1)/etc/init.d/vohive
+	$(INSTALL_BIN) ./root/www/cgi-bin/vohive-upload $(1)/www/cgi-bin/vohive-upload
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-vohive.json $(1)/usr/share/luci/menu.d/
 	$(INSTALL_DATA) ./root/usr/share/rpcd/acl.d/luci-app-vohive.json $(1)/usr/share/rpcd/acl.d/
 	$(INSTALL_BIN) ./root/usr/share/vohive/*.sh $(1)/usr/share/vohive/
@@ -46,7 +48,7 @@ define Package/luci-app-vohive/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
 	mkdir -p /etc/vohive/config /etc/vohive/data /tmp/vohive/logs /tmp/vohive/download
-	chmod 0755 /etc/init.d/vohive /usr/share/vohive/*.sh 2>/dev/null || true
+	chmod 0755 /etc/init.d/vohive /usr/share/vohive/*.sh /www/cgi-bin/vohive-upload 2>/dev/null || true
 	if [ -x /etc/init.d/rpcd ]; then
 		/etc/init.d/rpcd reload >/dev/null 2>&1 || /etc/init.d/rpcd restart >/dev/null 2>&1 || true
 	fi

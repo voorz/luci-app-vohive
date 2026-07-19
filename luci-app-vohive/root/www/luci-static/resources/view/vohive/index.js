@@ -164,6 +164,8 @@ function taskTitle(type) {
 		return _('安装/更新 VoHive 核心');
 	case 'rollback_core':
 		return _('回滚 VoHive 核心');
+	case 'upload_core':
+		return _('上传安装 VoHive 核心');
 	case 'update_plugin':
 		return _('更新 LuCI 插件');
 	case 'convert_identity':
@@ -311,6 +313,90 @@ return view.extend({
 			});
 	},
 
+	showUploadCoreDialog: function() {
+		var self = this;
+		var fileInput = E('input', {
+			'type': 'file',
+			'accept': 'application/octet-stream, */*',
+			'style': 'width:100%;'
+		});
+
+		ui.showModal(_('手动上传核心'), [
+			E('div', { 'style': 'margin-bottom:1em;' }, [
+				E('p', { 'style': 'margin-bottom:.5em;' }, _('选择本地的 VoHive 核心二进制文件进行上传安装。')),
+				E('p', { 'style': 'color:var(--text-color-medium, #999); font-size:12px;' }, _('文件大小不超过 100 MB，上传后将自动校验并安装。'))
+			]),
+			fileInput,
+			E('div', { 'class': 'right', 'style': 'margin-top:1em;' }, [
+				E('button', {
+					'class': 'btn',
+					'click': function() { ui.hideModal(); }
+				}, _('取消')),
+				E('button', {
+					'class': 'btn cbi-button-action',
+					'click': function() {
+						var file = fileInput.files[0];
+						if (!file) {
+							ui.addNotification(null, E('p', {}, _('请先选择文件')), 'danger');
+							return;
+						}
+						if (file.size > 100 * 1024 * 1024) {
+							ui.addNotification(null, E('p', {}, _('文件大小超过 100 MB 限制')), 'danger');
+							return;
+						}
+						ui.hideModal();
+						self.uploadCoreFile(file);
+					}
+				}, _('上传并安装'))
+			])
+		]);
+	},
+
+	uploadCoreFile: function(file) {
+		var self = this;
+		var xhr = new XMLHttpRequest();
+
+		var progressLabel = E('span', {}, _('准备上传...'));
+		var progressFill = E('div', { 'style': 'width:0%;' });
+		var progressBar = E('div', { 'class': 'cbi-progressbar', 'style': 'margin:.5em 0;' }, progressFill);
+
+		ui.showModal(_('正在上传核心文件'), [
+			E('div', {}, [
+				E('p', { 'style': 'margin-bottom:.5em;' }, _('%s (%s)').format(file.name, formatBytes(file.size))),
+				progressBar,
+				progressLabel
+			])
+		]);
+
+		xhr.upload.onprogress = function(e) {
+			if (e.lengthComputable) {
+				var percent = Math.round(e.loaded * 100 / e.total);
+				progressFill.style.width = percent + '%';
+				progressLabel.textContent = '%s / %s (%d%%)'.format(
+					formatBytes(e.loaded), formatBytes(e.total), percent
+				);
+			}
+		};
+
+		xhr.onload = function() {
+			ui.hideModal();
+			var result = parseJson(xhr.responseText);
+			if (result.ok) {
+				self.startTask('upload_core', []);
+			} else {
+				ui.addNotification(null, E('p', {}, result.message || _('上传失败')), 'danger');
+			}
+		};
+
+		xhr.onerror = function() {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, _('上传失败：网络错误')), 'danger');
+		};
+
+		xhr.open('POST', '/cgi-bin/vohive-upload', true);
+		xhr.send(file);
+	},
+
 	finishTaskPolling: function(status) {
 		if (this.taskTimer) {
 			window.clearInterval(this.taskTimer);
@@ -333,7 +419,7 @@ return view.extend({
 	refreshAfterTask: function(status) {
 		var self = this;
 		return this.refreshStatus().then(function(freshStatus) {
-			if (status.type == 'install_core' || status.type == 'rollback_core') {
+			if (status.type == 'install_core' || status.type == 'rollback_core' || status.type == 'upload_core') {
 				return self.refreshCoreSection(freshStatus || {});
 			}
 
@@ -492,7 +578,13 @@ return view.extend({
 				var repo = uci.get('vohive', 'main', 'release_repo') || DEFAULT_CORE_REPO;
 				var arch = uci.get('vohive', 'main', 'core_arch') || '';
 				return this.startTask('install_core', [ version, repo, arch ]);
-			}.bind(this));
+		}.bind(this));
+	});
+
+		o = s.option(form.Button, '_upload_core', _('手动上传核心'));
+		o.inputstyle = 'action';
+		o.onclick = ui.createHandlerFn(this, function() {
+			return this.showUploadCoreDialog();
 		});
 
 		o = s.option(form.Button, '_rollback_core', status.backup_version ? _('回滚核心') + ' (' + status.backup_version + ')' : _('回滚核心'));
@@ -501,7 +593,12 @@ return view.extend({
 			return this.startTask('rollback_core', []);
 		});
 
-		return m.render();
+		return m.render().then(function(node) {
+			node.querySelectorAll('input[id$=".release_repo"]').forEach(function(input) {
+				input.setAttribute('autocomplete', 'url');
+			});
+			return node;
+		});
 	},
 
 	renderPluginManagement: function(plugin) {
@@ -1162,7 +1259,15 @@ return view.extend({
 			});
 		});
 
-		return m.render();
+		return m.render().then(function(node) {
+			node.querySelectorAll('input[id$=".username"]').forEach(function(input) {
+				input.setAttribute('autocomplete', 'off');
+			});
+			node.querySelectorAll('input[id$=".password"]').forEach(function(input) {
+				input.setAttribute('autocomplete', 'new-password');
+			});
+			return node;
+		});
 	},
 
 	renderStatus: function(status, releases, plugin) {
