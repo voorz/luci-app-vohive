@@ -7,11 +7,8 @@ set -eu
 BIN_DIR="/etc/vohive/bin"
 BIN="$BIN_DIR/vohive"
 VERSION_FILE="$BIN_DIR/version"
-BACKUP_VERSION_FILE="$BIN_DIR/version.bak"
 ARCH_FILE="$BIN_DIR/arch"
-BACKUP_ARCH_FILE="$BIN_DIR/arch.bak"
 DOWNLOAD_DIR="/tmp/vohive/download"
-TEMP_BACKUP="$DOWNLOAD_DIR/vohive.prev"
 
 fail() {
 	printf '{"ok":false,"message":"%s"}\n' "$(json_escape "$*")"
@@ -53,20 +50,6 @@ fi
 /etc/init.d/vohive running >/dev/null 2>&1 && was_running=1
 [ "$was_running" = "0" ] || /etc/init.d/vohive stop || true
 
-if [ -x "$BIN" ]; then
-	cp -f "$BIN" "$TEMP_BACKUP"
-	if [ -s "$VERSION_FILE" ]; then
-		cp -f "$VERSION_FILE" "$BACKUP_VERSION_FILE"
-	else
-		printf '已安装，版本未知\n' > "$BACKUP_VERSION_FILE"
-	fi
-	if [ -s "$ARCH_FILE" ]; then
-		cp -f "$ARCH_FILE" "$BACKUP_ARCH_FILE"
-	else
-		printf 'unknown\n' > "$BACKUP_ARCH_FILE"
-	fi
-fi
-
 cp -f "$downloaded" "$BIN"
 chmod 0755 "$BIN"
 printf '%s\n' "$version" > "$VERSION_FILE"
@@ -74,16 +57,10 @@ printf '%s\n' "$asset_arch" > "$ARCH_FILE"
 
 if [ "$was_running" = "1" ]; then
 	if ! /etc/init.d/vohive start >/tmp/vohive-start.log 2>&1; then
-		if [ -f "$TEMP_BACKUP" ]; then
-			cp -f "$TEMP_BACKUP" "$BIN"
-			[ -s "$BACKUP_VERSION_FILE" ] && cp -f "$BACKUP_VERSION_FILE" "$VERSION_FILE"
-			[ -s "$BACKUP_ARCH_FILE" ] && cp -f "$BACKUP_ARCH_FILE" "$ARCH_FILE"
-			/etc/init.d/vohive start >/dev/null 2>&1 || true
-		fi
-		fail "Core installed but service failed to start; rolled back when possible"
+		fail "核心已安装但服务启动失败"
 	fi
 fi
 
-rm -f "$TEMP_BACKUP" "$downloaded" "$BIN_DIR/vohive.bak"
+rm -f "$downloaded" "$BIN_DIR/vohive.bak"
 
-printf '{"ok":true,"message":"已安�?VoHive 核心 %s"}\n' "$(json_escape "$version")"
+printf '{"ok":true,"message":"已安装 VoHive 核心 %s"}\n' "$(json_escape "$version")"

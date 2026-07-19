@@ -18,7 +18,6 @@
 			"file": {
 				"/usr/share/vohive/apply_config.sh": [ "exec" ],
 				"/usr/share/vohive/install_core.sh": [ "exec" ],
-				"/usr/share/vohive/rollback_core.sh": [ "exec" ],
 				"/usr/share/vohive/service.sh": [ "exec" ],
 				"/usr/share/vohive/clear_logs.sh": [ "exec" ],
 				"/usr/share/vohive/update_plugin.sh": [ "exec" ],

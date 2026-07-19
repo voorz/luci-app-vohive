@@ -165,9 +165,7 @@ function formatSpeed(bytes) {
 function taskTitle(type) {
 	switch (type) {
 	case 'install_core':
-		return _('安装/更新 VoHive 核心');
-	case 'rollback_core':
-		return _('回滚 VoHive 核心');
+		return _('在线安装 VoHive 核心');
 	case 'upload_core':
 		return _('上传安装 VoHive 核心');
 	case 'update_plugin':
@@ -350,7 +348,7 @@ return view.extend({
 			}
 		});
 
-		ui.showModal(_('手动上传核心'), [
+		ui.showModal(_('本地安装'), [
 			E('div', { 'style': 'width:100%; box-sizing:border-box;' }, [
 				E('p', { 'style': 'margin-bottom:1em;' }, _('选择本地的 VoHive 核心二进制文件进行上传安装。')),
 				E('div', { 'style': 'display:flex; align-items:center; gap:.5em; margin-bottom:1em;' }, [
@@ -461,7 +459,7 @@ return view.extend({
 	refreshAfterTask: function(status) {
 		var self = this;
 		return this.refreshStatus().then(function(freshStatus) {
-			if (status.type == 'install_core' || status.type == 'rollback_core' || status.type == 'upload_core') {
+			if (status.type == 'install_core' || status.type == 'upload_core') {
 				return self.refreshCoreSection(freshStatus || {});
 			}
 
@@ -612,7 +610,7 @@ return view.extend({
 		});
 		o.default = 'latest';
 
-		o = s.option(form.Button, '_install_core', _('安装/更新核心'));
+		o = s.option(form.Button, '_install_core', _('在线安装'));
 		o.inputstyle = 'apply';
 		o.onclick = ui.createHandlerFn(this, function() {
 			return m.save().then(function() {
@@ -623,16 +621,10 @@ return view.extend({
 		}.bind(this));
 	});
 
-		o = s.option(form.Button, '_upload_core', _('手动上传核心'));
+		o = s.option(form.Button, '_upload_core', _('本地安装'));
 		o.inputstyle = 'action';
 		o.onclick = ui.createHandlerFn(this, function() {
 			return this.showUploadCoreDialog();
-		});
-
-		o = s.option(form.Button, '_rollback_core', status.backup_version ? _('回滚核心') + ' (' + status.backup_version + ')' : _('回滚核心'));
-		o.inputstyle = 'reset';
-		o.onclick = ui.createHandlerFn(this, function() {
-			return this.startTask('rollback_core', []);
 		});
 
 		return m.render().then(function(node) {

@@ -14,11 +14,7 @@ trap 'rc=$?; [ "$rc" -ne 0 ] && task_fail "$id" "$type" "任务执行异常退�
 BIN_DIR="/etc/vohive/bin"
 BIN="$BIN_DIR/vohive"
 VERSION_FILE="$BIN_DIR/version"
-BACKUP_VERSION_FILE="$BIN_DIR/version.bak"
 ARCH_FILE="$BIN_DIR/arch"
-BACKUP_ARCH_FILE="$BIN_DIR/arch.bak"
-TEMP_BACKUP="$DOWNLOAD_DIR/vohive.prev"
-TEMP_CURRENT="$DOWNLOAD_DIR/vohive.current"
 PLUGIN_REPO="$DEFAULT_PLUGIN_REPO"
 
 [ -n "$id" ] || exit 1
@@ -33,7 +29,7 @@ fail() {
 	task_fail "$id" "$type" "$1"
 }
 
-# After core install/rollback + service restart, verify QMI health.
+# After core install + service restart, verify QMI health.
 # If QMI is not responsive, run recover_qmi.sh automatically.
 post_install_qmi_check() {
 	[ "$1" = "1" ] || return 0
@@ -124,20 +120,6 @@ install_core() {
 	task_write_status "$id" "$type" "running" "install" "正在安装核心" "" 0 0 0 0
 	[ "$was_running" = "0" ] || /etc/init.d/vohive stop || true
 
-	if [ -x "$BIN" ]; then
-		cp -f "$BIN" "$TEMP_BACKUP"
-		if [ -s "$VERSION_FILE" ]; then
-			cp -f "$VERSION_FILE" "$BACKUP_VERSION_FILE"
-		else
-			printf '已安装，版本未知\n' > "$BACKUP_VERSION_FILE"
-		fi
-		if [ -s "$ARCH_FILE" ]; then
-			cp -f "$ARCH_FILE" "$BACKUP_ARCH_FILE"
-		else
-			printf 'unknown\n' > "$BACKUP_ARCH_FILE"
-		fi
-	fi
-
 	cp -f "$downloaded" "$BIN"
 	chmod 0755 "$BIN"
 	printf '%s\n' "$version" > "$VERSION_FILE"
@@ -146,90 +128,13 @@ install_core() {
 	if [ "$was_running" = "1" ]; then
 		task_write_status "$id" "$type" "running" "restart" "正在重启 VoHive 服务" "" 0 0 0 0
 		if ! /etc/init.d/vohive start >/tmp/vohive-start.log 2>&1; then
-			if [ -f "$TEMP_BACKUP" ]; then
-				cp -f "$TEMP_BACKUP" "$BIN"
-				[ -s "$BACKUP_VERSION_FILE" ] && cp -f "$BACKUP_VERSION_FILE" "$VERSION_FILE"
-				[ -s "$BACKUP_ARCH_FILE" ] && cp -f "$BACKUP_ARCH_FILE" "$ARCH_FILE"
-				/etc/init.d/vohive start >/dev/null 2>&1 || true
-			fi
-			fail "Core installed but service failed to start; rolled back when possible"
+			fail "核心已安装但服务启动失败"
 		fi
 	fi
 
 	post_install_qmi_check "$was_running"
-	rm -f "$TEMP_BACKUP" "$downloaded" "$BIN_DIR/vohive.bak"
+	rm -f "$downloaded" "$BIN_DIR/vohive.bak"
 	finish_ok "已安装 VoHive 核心 $version"
-}
-
-rollback_core() {
-	local repo rollback_version rollback_arch asset url downloaded total release_json was_running current_version current_arch
-
-	repo="$(github_repo_slug "$(uci_get release_repo "$DEFAULT_CORE_REPO")")"
-	validate_github_repo "$repo" || fail "Invalid GitHub repository: $repo"
-
-	rollback_version="$(cat "$BACKUP_VERSION_FILE" 2>/dev/null || true)"
-	[ -n "$rollback_version" ] && [ "$rollback_version" != "已安装，版本未知" ] && [ "$rollback_version" != "版本未知" ] || fail "No rollback version recorded"
-
-	rollback_arch="$(cat "$BACKUP_ARCH_FILE" 2>/dev/null || true)"
-	if [ -z "$rollback_arch" ] || [ "$rollback_arch" = "unknown" ]; then
-		rollback_arch="$(resolve_asset_arch "$(uci_get core_arch '')")" || fail "No rollback architecture recorded"
-	fi
-
-	task_log "$id" "查询回滚版本 $rollback_version"
-	task_write_status "$id" "$type" "running" "prepare" "正在查询回滚版本" "" 0 0 0 0
-	release_json="$(release_json_for_version "$repo" "$rollback_version")" || fail "Failed to query rollback release"
-
-	asset="vohive_${rollback_version}_linux_${rollback_arch}"
-	url="https://github.com/$repo/releases/download/$rollback_version/$asset"
-	downloaded="$DOWNLOAD_DIR/$asset"
-	total="$(task_asset_size "$release_json" "$asset")"
-	current_version="$(cat "$VERSION_FILE" 2>/dev/null || true)"
-	current_arch="$(cat "$ARCH_FILE" 2>/dev/null || true)"
-
-	mkdir -p "$BIN_DIR" "$DOWNLOAD_DIR"
-	rm -f "$downloaded" "$TEMP_CURRENT"
-	task_download "$id" "$type" "$url" "$downloaded" "$asset" "$total"
-	[ -s "$downloaded" ] || fail "Downloaded rollback core is empty"
-
-	task_log "$id" "校验回滚核心文件"
-	task_write_status "$id" "$type" "running" "verify" "正在校验回滚核心文件" "$asset" "$(wc -c < "$downloaded" 2>/dev/null || echo 0)" "$total" 0 0
-	chmod +x "$downloaded"
-	if command -v file >/dev/null 2>&1; then
-		file "$downloaded" | grep -Eq 'ELF|executable' || {
-			rm -f "$downloaded"
-			fail "Downloaded rollback core is not an executable"
-		}
-	fi
-
-	was_running=0
-	/etc/init.d/vohive running >/dev/null 2>&1 && was_running=1
-	task_write_status "$id" "$type" "running" "install" "正在回滚核心" "" 0 0 0 0
-	[ "$was_running" = "0" ] || /etc/init.d/vohive stop || true
-
-	[ ! -x "$BIN" ] || cp -f "$BIN" "$TEMP_CURRENT"
-	cp -f "$downloaded" "$BIN"
-	chmod 0755 "$BIN"
-	printf '%s\n' "$rollback_version" > "$VERSION_FILE"
-	printf '%s\n' "$rollback_arch" > "$ARCH_FILE"
-
-	if [ "$was_running" = "1" ]; then
-		task_write_status "$id" "$type" "running" "restart" "正在重启 VoHive 服务" "" 0 0 0 0
-		if ! /etc/init.d/vohive start >/tmp/vohive-rollback-start.log 2>&1; then
-			if [ -f "$TEMP_CURRENT" ]; then
-				cp -f "$TEMP_CURRENT" "$BIN"
-				[ -n "$current_version" ] && printf '%s\n' "$current_version" > "$VERSION_FILE"
-				[ -n "$current_arch" ] && printf '%s\n' "$current_arch" > "$ARCH_FILE"
-				/etc/init.d/vohive start >/dev/null 2>&1 || true
-			fi
-			fail "Rolled back core, but service failed to start; restored current core when possible"
-		fi
-	fi
-
-	post_install_qmi_check "$was_running"
-	[ -n "$current_version" ] && printf '%s\n' "$current_version" > "$BACKUP_VERSION_FILE"
-	[ -n "$current_arch" ] && printf '%s\n' "$current_arch" > "$BACKUP_ARCH_FILE"
-	rm -f "$TEMP_CURRENT" "$downloaded" "$BIN_DIR/vohive.bak"
-	finish_ok "已回滚到 $rollback_version"
 }
 
 update_plugin() {
@@ -357,7 +262,7 @@ probe_device() {
 upload_core() {
 	local upload_file="$DOWNLOAD_DIR/vohive-core-upload"
 	local version="手动上传"
-	local asset_arch was_running
+	local asset_arch was_running api_port api_token api_version
 
 	[ -s "$upload_file" ] || fail "上传文件不存在或为空"
 
@@ -379,20 +284,6 @@ upload_core() {
 	task_write_status "$id" "$type" "running" "install" "正在安装核心" "" 0 0 0 0
 	[ "$was_running" = "0" ] || /etc/init.d/vohive stop || true
 
-	if [ -x "$BIN" ]; then
-		cp -f "$BIN" "$TEMP_BACKUP"
-		if [ -s "$VERSION_FILE" ]; then
-			cp -f "$VERSION_FILE" "$BACKUP_VERSION_FILE"
-		else
-			printf '已安装，版本未知\n' > "$BACKUP_VERSION_FILE"
-		fi
-		if [ -s "$ARCH_FILE" ]; then
-			cp -f "$ARCH_FILE" "$BACKUP_ARCH_FILE"
-		else
-			printf 'unknown\n' > "$BACKUP_ARCH_FILE"
-		fi
-	fi
-
 	cp -f "$upload_file" "$BIN"
 	chmod 0755 "$BIN"
 	printf '%s\n' "$version" > "$VERSION_FILE"
@@ -401,19 +292,27 @@ upload_core() {
 	if [ "$was_running" = "1" ]; then
 		task_write_status "$id" "$type" "running" "restart" "正在重启 VoHive 服务" "" 0 0 0 0
 		if ! /etc/init.d/vohive start >/tmp/vohive-start.log 2>&1; then
-			if [ -f "$TEMP_BACKUP" ]; then
-				cp -f "$TEMP_BACKUP" "$BIN"
-				[ -s "$BACKUP_VERSION_FILE" ] && cp -f "$BACKUP_VERSION_FILE" "$VERSION_FILE"
-				[ -s "$BACKUP_ARCH_FILE" ] && cp -f "$BACKUP_ARCH_FILE" "$ARCH_FILE"
-				/etc/init.d/vohive start >/dev/null 2>&1 || true
-			fi
-			fail "核心已安装但服务启动失败，已尝试回滚"
+			fail "核心已安装但服务启动失败"
 		fi
 	fi
 
+	# 尝试从核心 API 获取真实版本号
+	api_port="$(uci_get port '7575')"
+	api_token="$(curl -s http://127.0.0.1:$api_port/api/auth/login \
+		-X POST -H 'Content-Type: application/json' \
+		-d '{"username":"'"$(uci_get username 'admin')"'","password":"'"$(uci_get password 'admin')"'"}' \
+		2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
+	if [ -n "$api_token" ]; then
+		api_version="$(curl -s http://127.0.0.1:$api_port/api/system/info \
+			-H "Authorization: Bearer $api_token" \
+			2>/dev/null | jsonfilter -e '@.version' 2>/dev/null || true)"
+		[ -n "$api_version" ] && version="$api_version"
+	fi
+	printf '%s\n' "$version" > "$VERSION_FILE"
+
 	post_install_qmi_check "$was_running"
-	rm -f "$TEMP_BACKUP" "$upload_file" "$BIN_DIR/vohive.bak"
-	finish_ok "已安装 VoHive 核心（手动上传）"
+	rm -f "$upload_file" "$BIN_DIR/vohive.bak"
+	finish_ok "已安装 VoHive 核心（$version）"
 }
 
 task_mkdirs
@@ -421,7 +320,6 @@ task_log "$id" "任务启动"
 
 case "$type" in
 	install_core) install_core "$@" ;;
-	rollback_core) rollback_core ;;
 	upload_core) upload_core ;;
 	update_plugin) update_plugin ;;
 	convert_identity) convert_identity "$@" ;;

@@ -3,7 +3,6 @@
 BIN="/etc/vohive/bin/vohive"
 VERSION_FILE="/etc/vohive/bin/version"
 ARCH_FILE="/etc/vohive/bin/arch"
-BACKUP_VERSION_FILE="/etc/vohive/bin/version.bak"
 METRICS_STATE="/tmp/vohive/status.metrics"
 
 json_escape() {
@@ -165,16 +164,12 @@ core_arch_effective="$(resolve_asset_arch "$core_arch_config")"
 core_installed=0
 core_version=""
 core_arch=""
-backup_version=""
 if [ -x "$BIN" ]; then
 	core_installed=1
 	core_version="$(cat "$VERSION_FILE" 2>/dev/null || true)"
 	[ -n "$core_version" ] || core_version="已安装，版本未知"
 	core_arch="$(cat "$ARCH_FILE" 2>/dev/null || true)"
 	[ -n "$core_arch" ] || core_arch="$core_arch_effective"
-fi
-if [ -s "$BACKUP_VERSION_FILE" ]; then
-	backup_version="$(cat "$BACKUP_VERSION_FILE" 2>/dev/null || true)"
 fi
 
 default_password=0
@@ -232,7 +227,6 @@ printf '"plugin_version":"%s",' "$(json_escape "$plugin_version")"
 printf '"core_arch":"%s",' "$(json_escape "$core_arch")"
 printf '"core_arch_config":"%s",' "$(json_escape "$core_arch_config")"
 printf '"core_arch_effective":"%s",' "$(json_escape "$core_arch_effective")"
-printf '"backup_version":"%s",' "$(json_escape "$backup_version")"
 printf '"host":"%s",' "$(json_escape "$host")"
 printf '"port":"%s",' "$(json_escape "$port")"
 printf '"data_path":"%s",' "$(json_escape "$data_path")"
