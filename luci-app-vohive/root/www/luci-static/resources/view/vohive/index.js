@@ -318,86 +318,145 @@ return view.extend({
 
 	showUploadCoreDialog: function() {
 		var self = this;
-		var fileInput = E('input', {
-			'type': 'file',
-			'accept': 'application/octet-stream, */*',
-			'style': 'width:100%;'
+		var fileInput = E('input', { 'type': 'file', 'style': 'display:none;' });
+		var fileName = E('span', { 'style': 'color:var(--text-color-medium, #999); margin-left:.5em;' }, _('未选择文件'));
+
+		var uploadBtn = E('button', {
+			'class': 'btn cbi-button-action',
+			'click': function() {
+				var file = fileInput.files[0];
+				if (!file) {
+					fileInput.click();
+					return;
+				}
+				if (file.size > 100 * 1024 * 1024) {
+					ui.addNotification(null, E('p', {}, _('文件大小超过 100 MB 限制')), 'danger');
+					return;
+				}
+				ui.hideModal();
+				self.uploadCoreFile(file);
+			}
+		}, _('上传并安装'));
+
+		fileInput.addEventListener('change', function() {
+			var file = fileInput.files[0];
+			if (file) {
+				fileName.textContent = '%s (%s)'.format(file.name, formatBytes(file.size));
+				fileName.style.color = 'var(--primary-color, #09c)';
+			} else {
+				fileName.textContent = _('未选择文件');
+				fileName.style.color = 'var(--text-color-medium, #999)';
+			}
 		});
 
 		ui.showModal(_('手动上传核心'), [
-			E('div', { 'style': 'width:100%; box-sizing:border-box; margin-bottom:1em;' }, [
-				E('p', { 'style': 'margin-bottom:.5em;' }, _('选择本地的 VoHive 核心二进制文件进行上传安装。')),
-				E('p', { 'style': 'color:var(--text-color-medium, #999); font-size:12px;' }, _('文件大小不超过 100 MB，上传后将自动校验并安装。'))
-			]),
-			fileInput,
-			E('div', { 'class': 'right', 'style': 'margin-top:1em;' }, [
-				E('button', {
-					'class': 'btn',
-					'click': function() { ui.hideModal(); }
-				}, _('取消')),
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': function() {
-						var file = fileInput.files[0];
-						if (!file) {
-							ui.addNotification(null, E('p', {}, _('请先选择文件')), 'danger');
-							return;
-						}
-						if (file.size > 100 * 1024 * 1024) {
-							ui.addNotification(null, E('p', {}, _('文件大小超过 100 MB 限制')), 'danger');
-							return;
-						}
-						ui.hideModal();
-						self.uploadCoreFile(file);
-					}
-				}, _('上传并安装'))
+			E('div', { 'style': 'width:100%; box-sizing:border-box;' }, [
+				E('p', { 'style': 'margin-bottom:1em;' }, _('选择本地的 VoHive 核心二进制文件进行上传安装。')),
+				E('div', { 'style': 'display:flex; align-items:center; gap:.5em; margin-bottom:1em;' }, [
+					E('button', {
+						'class': 'btn cbi-button',
+						'click': function() { fileInput.click(); }
+					}, _('选择文件')),
+					fileName
+				]),
+				E('div', { 'class': 'right' }, [
+					E('button', {
+						'class': 'btn',
+						'click': function() { ui.hideModal(); }
+					}, _('取消')),
+					' ',
+					uploadBtn
+				])
 			])
 		]);
 	},
 
 	uploadCoreFile: function(file) {
 		var self = this;
-		var xhr = new XMLHttpRequest();
+		var CHUNK_SIZE = 49152;
+		var totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+		var offset = 0;
+		var chunkIndex = 0;
+		var cancelled = false;
 
 		var progressLabel = E('span', {}, _('准备上传...'));
 		var progressFill = E('div', { 'style': 'width:0%;' });
 		var progressBar = E('div', { 'class': 'cbi-progressbar', 'style': 'margin:.5em 0;' }, progressFill);
 
+		var cancelBtn = E('button', {
+			'class': 'btn cbi-button cbi-button-reset',
+			'click': function() {
+				cancelled = true;
+				ui.hideModal();
+				ui.addNotification(null, E('p', {}, _('上传已取消')), 'info');
+			}
+		}, _('取消'));
+
 		ui.showModal(_('正在上传核心文件'), [
 			E('div', { 'style': 'width:100%; box-sizing:border-box;' }, [
-				E('p', { 'style': 'margin-bottom:.5em;' }, _('%s (%s)').format(file.name, formatBytes(file.size))),
+				E('p', { 'style': 'margin-bottom:.5em;', 'word-break': 'break-all' }, _('%s (%s)').format(file.name, formatBytes(file.size))),
 				progressBar,
-				progressLabel
+				progressLabel,
+				E('div', { 'class': 'right', 'style': 'margin-top:.75em;' }, [ cancelBtn ])
 			])
 		]);
 
-		xhr.upload.onprogress = function(e) {
-			if (e.lengthComputable) {
-				var percent = Math.round(e.loaded * 100 / e.total);
-				progressFill.style.width = percent + '%';
-				progressLabel.textContent = '%s / %s (%d%%)'.format(
-					formatBytes(e.loaded), formatBytes(e.total), percent
-				);
-			}
-		};
+		function uploadNextChunk() {
+			if (cancelled)
+				return;
 
-		xhr.onload = function() {
-			ui.hideModal();
-			var result = parseJson(xhr.responseText);
-			if (result.ok) {
+			if (offset >= file.size) {
+				ui.hideModal();
 				self.startTask('upload_core', []);
-			} else {
-				ui.addNotification(null, E('p', {}, result.message || _('上传失败')), 'danger');
+				return;
 			}
-		};
 
-		xhr.onerror = function() {
-			ui.hideModal();
-			ui.addNotification(null, E('p', {}, _('上传失败：网络错误')), 'danger');
-		};
+			var end = Math.min(offset + CHUNK_SIZE, file.size);
+			var slice = file.slice(offset, end);
+			var reader = new FileReader();
 
-		xhr.open('POST', '/cgi-bin/vohive-upload', true);
-		xhr.send(file);
+			reader.onload = function() {
+				if (cancelled)
+					return;
+
+				var bytes = new Uint8Array(reader.result);
+				var b64 = btoa(String.fromCharCode.apply(null, bytes));
+				var mode = chunkIndex === 0 ? 'new' : 'append';
+
+				fs.exec_direct('/usr/share/vohive/receive_upload.sh', [ mode, b64 ])
+					.then(function(text) {
+						var result = parseJson(text);
+						if (result.ok === false) {
+							ui.hideModal();
+							ui.addNotification(null, E('p', {}, result.message || _('上传失败')), 'danger');
+							return;
+						}
+
+						chunkIndex++;
+						offset = end;
+						var percent = Math.round(offset * 100 / file.size);
+						progressFill.style.width = percent + '%';
+						progressLabel.textContent = '%s / %s (%d%%)'.format(
+							formatBytes(offset), formatBytes(file.size), percent
+						);
+
+						uploadNextChunk();
+					})
+					.catch(function(e) {
+						ui.hideModal();
+						ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
+					});
+			};
+
+			reader.onerror = function() {
+				ui.hideModal();
+				ui.addNotification(null, E('p', {}, _('读取文件失败')), 'danger');
+			};
+
+			reader.readAsArrayBuffer(slice);
+		}
+
+		uploadNextChunk();
 	},
 
 	finishTaskPolling: function(status) {

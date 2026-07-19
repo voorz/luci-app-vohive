@@ -26,7 +26,8 @@
 				"/usr/share/vohive/task_start.sh": [ "exec" ],
 				"/usr/share/vohive/task_cancel.sh": [ "exec" ],
 				"/usr/share/vohive/driver_bind.sh": [ "exec" ],
-				"/usr/share/vohive/recover_qmi.sh": [ "exec" ]
+				"/usr/share/vohive/recover_qmi.sh": [ "exec" ],
+				"/usr/share/vohive/receive_upload.sh": [ "exec" ]
 			}
 		}
 	}
