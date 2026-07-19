@@ -589,6 +589,14 @@ return view.extend({
 			return /^(https?:\/\/github\.com\/)?[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/.test(value) || _('必须是 GitHub 仓库地址');
 		};
 
+		o = s.option(form.DummyValue, '_repo_status', _('仓库状态'));
+		o.rawhtml = true;
+		o.cfgvalue = function(section_id) {
+			var color = repoOk ? '#37a24d' : '#d9534f';
+			var text = repoOk ? _('可用') : _('不可用或无 Release');
+			return '<span style="color:%s; font-weight:700;">●</span> <span style="color:%s;">%s</span>'.format(color, color, text);
+		};
+
 		o = s.option(form.ListValue, 'core_arch', _('核心架构'));
 		o.value('arm64', 'linux_arm64');
 		o.value('amd64', 'linux_amd64');
@@ -632,17 +640,6 @@ return view.extend({
 			node.querySelectorAll('input[id$=".release_repo"]').forEach(function(input) {
 				input.setAttribute('autocomplete', 'url');
 			});
-
-			/* 在 release_repo 输入框旁添加仓库状态指示灯 */
-			var repoInput = node.querySelector('input[id$=".release_repo"]');
-			if (repoInput && repoInput.parentNode) {
-				var indicator = E('span', {
-					'style': 'display:inline-block; width:10px; height:10px; border-radius:50%; margin-left:.5em; vertical-align:middle; background:%s;'.format(repoOk ? '#37a24d' : '#d9534f'),
-					'title': repoOk ? _('仓库可用') : _('仓库不可用或无 Release')
-				});
-				repoInput.parentNode.appendChild(indicator);
-			}
-
 			return node;
 		});
 	},
@@ -1427,7 +1424,8 @@ updateStatusNode: function(status) {
 			}, _('重启')),
 			' ',
 			E('button', {
-				'class': 'btn cbi-button',
+				'class': 'btn cbi-button cbi-button-reset',
+				'style': 'background:#f0ad4e; border-color:#f0ad4e; color:#fff;',
 				'click': ui.createHandlerFn(this, function() {
 					if (!window.confirm(_('将重置模组并恢复 QMI 通信，期间服务会短暂中断，是否继续？')))
 						return Promise.resolve();
