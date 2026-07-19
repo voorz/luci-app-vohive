@@ -1,0 +1,342 @@
+name: Release Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      vohive_version:
+        description: VoHive release tag
+        required: true
+        default: v1.6.1
+  push:
+    tags:
+      - 'v*'
+
+env:
+  TZ: Asia/Shanghai
+  VOHIVE_VERSION: ${{ github.event.inputs.vohive_version || 'v1.6.1' }}
+
+jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.release_meta.outputs.tag_name }}
+      luci_version: ${{ steps.release_meta.outputs.luci_version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve versions
+        id: release_meta
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag_name="${GITHUB_REF_NAME}"
+            luci_version="${GITHUB_REF_NAME#v}"
+          else
+            tag_name="v0.0.0-dev"
+            luci_version="0.0.0-dev"
+          fi
+
+          previous_tag="$(git tag --sort=-v:refname --merged HEAD | grep -v "^${tag_name}$" | head -n 1 || true)"
+
+          {
+            echo "## VoHive LuCI ${luci_version}"
+            echo
+            echo "### 更新日志"
+            echo
+            if [ -n "$previous_tag" ]; then
+              git log --pretty=format:'- %s (%h)' "${previous_tag}..HEAD"
+            else
+              git log --pretty=format:'- %s (%h)' -n 20
+            fi
+            echo
+            echo
+          } > release-notes.md
+
+          echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
+          echo "luci_version=${luci_version}" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=${previous_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: openwrt_24_ipk
+            label: OpenWrt 24.10 IPK
+          - id: openwrt_25_apk
+            label: OpenWrt 25.12 APK
+
+    steps:
+      - name: Install packages
+        run: |
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install zstd build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev python3 rsync unzip zlib1g-dev file wget curl
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: source
+
+      - name: Import SDK environment
+        id: sdk_env
+        run: |
+          cat "source/.github/workflows/${{ matrix.id }}.env" >> "$GITHUB_ENV"
+          while IFS='=' read -r key value; do
+            echo "${key,,}=${value}" >> "$GITHUB_OUTPUT"
+          done < "source/.github/workflows/${{ matrix.id }}.env"
+
+      - name: Prepare VoHive core files
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -eu
+          mkdir -p source/vohive-core/files
+          available=""
+          for arch in arm64 amd64 armv7; do
+            asset="vohive_${VOHIVE_VERSION}_linux_${arch}"
+            out="source/vohive-core/files/vohive-${arch}"
+            tmp="${out}.tmp"
+            real_version=""
+
+            # 1) 先从核心 release 仓库下载
+            if gh release download "${VOHIVE_VERSION}" \
+                --repo voorz/vohive-next \
+                --pattern "${asset}" \
+                --output "${tmp}" 2>/dev/null; then
+              mv -f "${tmp}" "${out}"
+              real_version="${VOHIVE_VERSION}"
+              echo "::notice::${arch}: fetched ${asset} from release repo."
+            else
+              rm -f "${tmp}"
+              # 2) 查项目预置目录（files/），按版本倒序取最新
+              preset="$(ls -1 source/vohive-core/files/vohive_v*_linux_${arch} 2>/dev/null | sort -Vr | head -n1 || true)"
+              if [ -n "${preset}" ] && [ -s "${preset}" ]; then
+                cp -f "${preset}" "${out}"
+                real_version="$(basename "${preset}" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9])_linux_.*/\1/')"
+                echo "::warning::${arch}: release 下载失败，使用预置 ${preset##*/}（版本 ${real_version}）。"
+              else
+                # 3) 都没有，跳过该架构
+                echo "::notice::${arch}: 无可用核心，跳过该架构构建。"
+                rm -f "${out}"
+                continue
+              fi
+            fi
+            rm -f "${tmp}"
+            chmod 0755 "${out}"
+            echo "${real_version}" > "source/vohive-core/files/.version-${arch}"
+            echo "${arch}=${real_version}" >> "source/vohive-core/files/.available"
+            file "${out}"
+            available="${available} ${arch}"
+          done
+          echo "AVAILABLE_ARCHS=${available# }" >> "$GITHUB_ENV"
+          # 用实际产出的核心版本覆盖 VOHIVE_VERSION（使包文件名版本与实际二进制一致）
+          real_core_version="$(cut -d= -f2 source/vohive-core/files/.available 2>/dev/null | sort -Vr | head -n1 || true)"
+          if [ -n "$real_core_version" ]; then
+            echo "VOHIVE_VERSION=$real_core_version" >> "$GITHUB_ENV"
+            echo "Overrode VOHIVE_VERSION to $real_core_version (from .available)"
+          fi
+          echo "Available archs:${available}"
+
+      - name: Initialize SDK
+        env:
+          SDK_FILE: ${{ steps.sdk_env.outputs.sdk_name }}.${{ steps.sdk_env.outputs.sdk_ext }}
+          SDK_SOURCE: ${{ steps.sdk_env.outputs.sdk_url }}${{ steps.sdk_env.outputs.sdk_name }}.${{ steps.sdk_env.outputs.sdk_ext }}
+        run: |
+          set -eu
+          wget "$SDK_SOURCE"
+          mkdir -p sdk
+          if [ "${SDK_EXT}" = "tar.zst" ]; then
+            tar --zstd -xf "$SDK_FILE" -C sdk --strip-components=1
+          else
+            tar -xf "$SDK_FILE" -C sdk --strip-components=1
+          fi
+
+          cd sdk
+          cat <<EOF > feeds.conf
+          src-git base https://github.com/openwrt/openwrt.git;${FEED_BRANCH}
+          src-git packages https://github.com/openwrt/packages.git;${FEED_BRANCH}
+          src-git luci https://github.com/openwrt/luci.git;${FEED_BRANCH}
+          src-git routing https://git.openwrt.org/feed/routing.git;${FEED_BRANCH}
+          src-link vohive $(pwd)/../source
+          EOF
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          ./scripts/feeds install -a -p vohive
+
+          cat <<'EOF' > .config
+          CONFIG_ALL_NONSHARED=n
+          CONFIG_ALL_KMODS=n
+          CONFIG_ALL=n
+          CONFIG_AUTOREMOVE=n
+          CONFIG_PACKAGE_luci-app-vohive=m
+          EOF
+          for arch in arm64 amd64 armv7; do
+            case " ${AVAILABLE_ARCHS} " in
+              *" ${arch} "*) echo "CONFIG_PACKAGE_vohive-core-${arch}=m" >> .config ;;
+            esac
+          done
+          make defconfig
+          make clean
+
+      - name: Compile packages
+        run: |
+          set -eu
+          cd sdk
+          ./scripts/feeds update vohive
+          ./scripts/feeds install -a -p vohive
+
+          # 将 Makefile 中的 PKG_VERSION 替换为当前 tag 版本
+          sed -i "s/^PKG_VERSION?=.*/PKG_VERSION?=${{ needs.prepare.outputs.luci_version }}/" \
+            feeds/vohive/luci-app-vohive/Makefile
+
+          for pkg in luci-app-vohive vohive-core; do
+            make "package/feeds/vohive/${pkg}/clean" || true
+            if ! make "package/feeds/vohive/${pkg}/compile" -j"$(nproc)"; then
+              make "package/feeds/vohive/${pkg}/compile" -j1 V=s
+            fi
+          done
+
+          package_dir="$(pwd)/bin/packages/${SDK_ARCH}/vohive"
+          dist_dir="$(pwd)/../dist/${{ matrix.id }}"
+          mkdir -p "$dist_dir"
+
+          shopt -s nullglob
+          package_files=("$package_dir"/*.${PACKAGE_EXT})
+          if [ ${#package_files[@]} -eq 0 ]; then
+            echo "No .${PACKAGE_EXT} packages were produced in ${package_dir}" >&2
+            exit 1
+          fi
+
+          cp "$package_dir"/*.${PACKAGE_EXT} "$dist_dir"/
+          cp "$package_dir"/Packages* "$dist_dir"/ 2>/dev/null || true
+          cp "$package_dir"/APKINDEX* "$dist_dir"/ 2>/dev/null || true
+          cp "../source/vohive-core/files/.available" "$dist_dir/.available" 2>/dev/null || true
+
+          {
+            echo "Tag: ${{ needs.prepare.outputs.tag_name }}"
+            echo "LuCI version: ${{ needs.prepare.outputs.luci_version }}"
+            echo "VoHive core: ${VOHIVE_VERSION}"
+            echo "Build: ${{ matrix.label }}"
+            echo "Build ID: ${{ matrix.id }}"
+            echo "SDK: ${SDK_NAME}"
+            echo "Package format: ${PACKAGE_EXT}"
+            echo "Package count: ${#package_files[@]}"
+          } > "$dist_dir/BUILD-INFO.txt"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vohive-${{ matrix.id }}
+          path: dist/${{ matrix.id }}
+          retention-days: 7
+          include-hidden-files: true
+
+  release:
+    name: Publish Release
+    needs:
+      - prepare
+      - build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: vohive-*
+          merge-multiple: false
+
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes
+
+      - name: Collect release assets
+        run: |
+          set -eu
+          mkdir -p releases
+          shopt -s nullglob
+
+          for dir in artifacts/*; do
+            [ -d "$dir" ] || continue
+            for package in "$dir"/*.ipk "$dir"/*.apk; do
+              [ -f "$package" ] || continue
+              cp "$package" releases/
+            done
+            [ -f "$dir/BUILD-INFO.txt" ] && cp "$dir/BUILD-INFO.txt" "releases/$(basename "$dir")-BUILD-INFO.txt"
+          done
+
+          (cd releases && sha256sum *.ipk *.apk 2>/dev/null > sha256sums.txt || true)
+          ls -lh releases
+
+      - name: Generate package table in release notes
+        run: |
+          set -eu
+          available_file="$(find artifacts -name .available -print -quit 2>/dev/null || true)"
+          {
+            echo "### 安装包说明"
+            echo
+            echo "| 包名 | 说明 |"
+            echo "|------|------|"
+            echo "| \`luci-app-vohive_*.ipk/apk\` | LuCI 管理页面（必装），不含 VoHive core 二进制 |"
+            if [ -n "$available_file" ] && [ -f "$available_file" ]; then
+              declare -A arch_ver
+              while IFS='=' read -r a v; do
+                [ -n "$a" ] && arch_ver["$a"]="$v"
+              done < "$available_file"
+              for a in arm64 amd64 armv7; do
+                if [ -n "${arch_ver[$a]:-}" ]; then
+                  case "$a" in
+                    arm64) desc="适用于 aarch64/arm64 路由器（如 Kwrt 25.12）" ;;
+                    amd64) desc="适用于 x86_64 设备" ;;
+                    armv7) desc="适用于 armv7l 路由器" ;;
+                  esac
+                  echo "| \`vohive-core-${a}_*.ipk/apk\` | VoHive core ${arch_ver[$a]}，${desc} |"
+                fi
+              done
+            fi
+            echo
+            echo "### 如何选择"
+            echo
+            echo "1. **确认路由器架构**：SSH 执行 \`uname -m\`"
+            echo "   - \`aarch64\` → 选 **arm64**"
+            echo "   - \`x86_64\` → 选 **amd64**"
+            echo "   - \`armv7l\` → 选 **armv7**"
+            echo "2. **确认 OpenWrt 版本**："
+            echo "   - OpenWrt / Kwrt **24.x** → 下载 **.ipk** 包"
+            echo "   - OpenWrt / Kwrt **25.x** → 下载 **.apk** 包"
+            echo "3. **安装顺序**：先安装 \`luci-app-vohive\`，再安装对应架构的 \`vohive-core-*\`"
+            echo "   （或在 LuCI 页面的"核心管理"中在线安装核心）"
+            echo
+            if [ -n "${{ needs.prepare.outputs.previous_tag }}" ]; then
+              echo "完整对比: https://github.com/${GITHUB_REPOSITORY}/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.tag_name }}"
+            fi
+          } >> release-notes/release-notes.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          body_path: release-notes/release-notes.md
+          files: releases/*

@@ -1,0 +1,47 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+USE_PROCD=1
+
+BIN="/etc/vohive/bin/vohive"
+CONFIG="/etc/vohive/config/config.yaml"
+RUNTIME_DIR="/etc/vohive"
+
+start_service() {
+	local enabled
+
+	enabled="$(uci -q get vohive.main.enabled)"
+	[ "$enabled" = "1" ] || {
+		echo "VoHive is disabled in /etc/config/vohive"
+		return 1
+	}
+
+	/usr/share/vohive/render_config.sh || return 1
+	mkdir -p "$RUNTIME_DIR/data"
+
+	[ -x "$BIN" ] || {
+		echo "VoHive core is not installed: $BIN"
+		return 1
+	}
+
+	[ -s "$CONFIG" ] || {
+		echo "VoHive config is missing: $CONFIG"
+		return 1
+	}
+
+	procd_open_instance vohive
+	procd_set_param command /bin/sh -c "cd '$RUNTIME_DIR' && exec '$BIN' -c '$CONFIG'"
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger vohive
+}
+
+reload_service() {
+	restart
+}

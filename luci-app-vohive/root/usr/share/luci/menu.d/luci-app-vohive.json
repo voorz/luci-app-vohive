@@ -1,0 +1,13 @@
+{
+	"admin/services/vohive": {
+		"title": "VoHive",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "vohive/index"
+		},
+		"depends": {
+			"acl": [ "luci-app-vohive" ]
+		}
+	}
+}

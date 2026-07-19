@@ -1,0 +1,9 @@
+qmi-wwan-watchdog/
+docs/
+.mignore
+
+# CI 生成的核心二进制与元数据（无版本前缀），不提交
+# 预置的核心二进制文件名为 vohive_v<version>_linux_<arch>，会被 git 跟踪
+vohive-core/files/vohive-*
+vohive-core/files/.version-*
+vohive-core/files/.available
