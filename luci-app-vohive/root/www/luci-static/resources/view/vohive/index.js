@@ -6,6 +6,7 @@
 'require uci';
 'require dom';
 'require poll';
+'require rpc';
 
 /* Inject indeterminate progress bar animation */
 (function() {
@@ -373,11 +374,8 @@ return view.extend({
 
 	uploadCoreFile: function(file) {
 		var self = this;
-		var CHUNK_SIZE = 49152;
-		var totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-		var offset = 0;
-		var chunkIndex = 0;
-		var cancelled = false;
+		var xhr;
+		var uploadPath = '/tmp/vohive/download/vohive-core-upload';
 
 		var progressLabel = E('span', {}, _('准备上传...'));
 		var progressFill = E('div', { 'style': 'width:0%;' });
@@ -386,7 +384,7 @@ return view.extend({
 		var cancelBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-reset',
 			'click': function() {
-				cancelled = true;
+				if (xhr) xhr.abort();
 				ui.hideModal();
 				ui.addNotification(null, E('p', {}, _('上传已取消')), 'info');
 			}
@@ -401,62 +399,44 @@ return view.extend({
 			])
 		]);
 
-		function uploadNextChunk() {
-			if (cancelled)
-				return;
+		var formData = new FormData();
+		formData.append('sessionid', rpc.getSessionID());
+		formData.append('filename', uploadPath);
+		formData.append('filedata', file);
 
-			if (offset >= file.size) {
+		xhr = new XMLHttpRequest();
+		xhr.open('POST', L.env.cgi_base + '/cgi-upload', true);
+		xhr.upload.onprogress = function(ev) {
+			if (ev.lengthComputable) {
+				var percent = Math.round(ev.loaded * 100 / ev.total);
+				progressFill.style.width = percent + '%';
+				progressLabel.textContent = '%s / %s (%d%%)'.format(
+					formatBytes(ev.loaded), formatBytes(ev.total), percent
+				);
+			}
+		};
+		xhr.onload = function() {
+			if (xhr.status === 200) {
+				try {
+					var res = JSON.parse(xhr.responseText);
+					if (res.failure) {
+						ui.hideModal();
+						ui.addNotification(null, E('p', {}, _('上传失败: %s').format(res.failure)), 'danger');
+						return;
+					}
+				} catch(e) {}
 				ui.hideModal();
 				self.startTask('upload_core', []);
-				return;
-			}
-
-			var end = Math.min(offset + CHUNK_SIZE, file.size);
-			var slice = file.slice(offset, end);
-			var reader = new FileReader();
-
-			reader.onload = function() {
-				if (cancelled)
-					return;
-
-				var bytes = new Uint8Array(reader.result);
-				var b64 = btoa(String.fromCharCode.apply(null, bytes));
-				var mode = chunkIndex === 0 ? 'new' : 'append';
-
-				fs.exec_direct('/usr/share/vohive/receive_upload.sh', [ mode, b64 ])
-					.then(function(text) {
-						var result = parseJson(text);
-						if (result.ok === false) {
-							ui.hideModal();
-							ui.addNotification(null, E('p', {}, result.message || _('上传失败')), 'danger');
-							return;
-						}
-
-						chunkIndex++;
-						offset = end;
-						var percent = Math.round(offset * 100 / file.size);
-						progressFill.style.width = percent + '%';
-						progressLabel.textContent = '%s / %s (%d%%)'.format(
-							formatBytes(offset), formatBytes(file.size), percent
-						);
-
-						uploadNextChunk();
-					})
-					.catch(function(e) {
-						ui.hideModal();
-						ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
-					});
-			};
-
-			reader.onerror = function() {
+			} else {
 				ui.hideModal();
-				ui.addNotification(null, E('p', {}, _('读取文件失败')), 'danger');
-			};
-
-			reader.readAsArrayBuffer(slice);
-		}
-
-		uploadNextChunk();
+				ui.addNotification(null, E('p', {}, _('上传失败: HTTP %d').format(xhr.status)), 'danger');
+			}
+		};
+		xhr.onerror = function() {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, _('上传失败: 网络错误')), 'danger');
+		};
+		xhr.send(formData);
 	},
 
 	finishTaskPolling: function(status) {
