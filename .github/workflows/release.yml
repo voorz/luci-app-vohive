@@ -286,8 +286,7 @@ jobs:
             done
           done
 
-          echo "=== SHA256 ==="
-          (cd releases && sha256sum *.ipk *.apk 2>/dev/null || true)
+          (cd releases && sha256sum *.ipk *.apk 2>/dev/null > sha256sums.txt || true)
           ls -lh releases
 
       - name: Generate package table in release notes
