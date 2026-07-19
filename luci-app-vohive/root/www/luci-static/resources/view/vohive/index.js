@@ -1190,30 +1190,17 @@ return view.extend({
 		/* Action section */
 		var actionBtns = [];
 
+		// Router config: setup or restore
 		if (!integrated) {
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
 				'click': ui.createHandlerFn(self, function() {
-					return self.networkAction('enable');
+					if (!window.confirm(_('确认配置路由器吗？将创建网络接口并加入防火墙 wan 域。')))
+						return Promise.resolve();
+					return self.networkAction('setup');
 				})
-			}, _('启用网络')));
+			}, _('一键配置')));
 		} else {
-			if (dataConnected) {
-				actionBtns.push(E('button', {
-					'class': 'btn cbi-button cbi-button-neutral',
-					'click': ui.createHandlerFn(self, function() {
-						return self.networkAction('disable');
-					})
-				}, _('禁用网络')));
-			} else {
-				actionBtns.push(E('button', {
-					'class': 'btn cbi-button cbi-button-apply',
-					'click': ui.createHandlerFn(self, function() {
-						return self.networkAction('enable');
-					})
-				}, _('启用网络')));
-			}
-
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-reset',
 				'click': ui.createHandlerFn(self, function() {
@@ -1222,6 +1209,23 @@ return view.extend({
 					return self.networkAction('restore');
 				})
 			}, _('撤销配置')));
+		}
+
+		// VoHive network: enable or disable (independent of router config)
+		if (dataConnected) {
+			actionBtns.push(E('button', {
+				'class': 'btn cbi-button cbi-button-neutral',
+				'click': ui.createHandlerFn(self, function() {
+					return self.networkAction('disable');
+				})
+			}, _('禁用网络')));
+		} else {
+			actionBtns.push(E('button', {
+				'class': 'btn cbi-button cbi-button-apply',
+				'click': ui.createHandlerFn(self, function() {
+					return self.networkAction('enable');
+				})
+			}, _('启用网络')));
 		}
 
 		actionBtns.push(E('button', {
@@ -1250,7 +1254,7 @@ return view.extend({
 
 		ui.showModal(_('网络配置'), [
 			E('div', { 'class': 'cbi-section' }, [
-				E('em', { 'class': 'spinning' }, _('正在') + (action === 'enable' ? _('启用网络') : action === 'disable' ? _('禁用网络') : _('撤销配置')) + _('...'))
+				E('em', { 'class': 'spinning' }, _('正在') + (action === 'setup' ? _('配置路由器') : action === 'restore' ? _('撤销配置') : action === 'enable' ? _('启用网络') : _('禁用网络')) + _('...'))
 			])
 		]);
 
