@@ -1179,7 +1179,7 @@ return view.extend({
 			E('td', {}, _('路由优先级')),
 			E('td', {}, E('span', {
 				'style': 'color:%s; font-weight:700;'.format(status.is_primary ? '#37a24d' : '#d58512')
-			}, status.is_primary ? _('主力（4G 优先）') : _('备用（其他 WAN 优先）')))
+			}, status.is_primary ? _('主力（4G/5G 优先）') : _('备用（其他 WAN 优先）')))
 		]));
 
 		nodes.push(E('div', { 'class': 'cbi-section' }, [
@@ -1240,7 +1240,7 @@ return view.extend({
 			E('div', { 'style': 'display:flex; gap:.5em; flex-wrap:wrap;' }, actionBtns),
 			E('p', { 'style': 'margin-top:.75em; color:var(--text-color-medium); font-size:13px;' }, _(
 				'启用后将自动创建不配置协议的网络接口并加入防火墙 wan 域，' +
-				'使 4G 数据连接获得 NAT 转发能力。' +
+				'使 4G/5G 数据连接获得 NAT 转发能力。' +
 				'配置过程中 VoHive 数据连接会短暂中断并自动恢复。'
 			))
 		]));
@@ -1578,7 +1578,7 @@ return view.extend({
 
 		var rows = [
 			[ _('服务状态'), statusBadge(status.running) ],
-			[ _('数据连接'), status.running ? E('span', {
+			[ _('蜂窝网络'), status.running ? E('span', {
 				'style': 'color:%s; font-weight:700;'.format(status.data_connected ? '#37a24d' : '#d9534f')
 			}, status.data_connected ? _('已启用') : _('未启用')) : _('未运行') ],
 			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
