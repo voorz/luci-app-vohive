@@ -284,6 +284,7 @@ upload_core() {
 	task_write_status "$id" "$type" "running" "install" "正在安装核心" "" 0 0 0 0
 	[ "$was_running" = "0" ] || /etc/init.d/vohive stop || true
 
+	mkdir -p "$BIN_DIR"
 	cp -f "$upload_file" "$BIN"
 	chmod 0755 "$BIN"
 	printf '%s\n' "$version" > "$VERSION_FILE"
