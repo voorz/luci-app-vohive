@@ -4,16 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       vohive_version:
-        description: VoHive release tag
-        required: true
-        default: v1.6.1
+        description: 'VoHive core version (empty = use latest from repos)'
+        required: false
+        default: ''
   push:
     tags:
       - 'v*'
 
 env:
   TZ: Asia/Shanghai
-  VOHIVE_VERSION: ${{ github.event.inputs.vohive_version || 'v1.6.1' }}
+  VOHIVE_VERSION: ${{ github.event.inputs.vohive_version || '' }}
 
 jobs:
   prepare:
@@ -126,40 +126,66 @@ jobs:
           set -eu
           mkdir -p source/vohive-core/files
           available=""
-          for arch in arm64 amd64 armv7; do
-            asset="vohive_${VOHIVE_VERSION}_linux_${arch}"
-            out="source/vohive-core/files/vohive-${arch}"
-            tmp="${out}.tmp"
-            real_version=""
 
-            # 1) Try downloading from the core release repo first
-            if gh release download "${VOHIVE_VERSION}" \
-                --repo voorz/vohive-next \
-                --pattern "${asset}" \
-                --output "${tmp}" 2>/dev/null; then
-              mv -f "${tmp}" "${out}"
-              real_version="${VOHIVE_VERSION}"
-              echo "::notice::${arch}: fetched ${asset} from release repo."
+          # Helper: download core binary from a GitHub release repo
+          # Args: $1=repo $2=tag(or "latest") $3=arch $4=tmpdir
+          # Sets $fetched to the downloaded file path on success.
+          fetch_from_repo() {
+            local repo="$1" tag="$2" arch="$3" tmpdir="$4"
+            local actual_tag="$tag"
+            fetched=""
+            if [ "$tag" = "latest" ]; then
+              actual_tag="$(gh release list --repo "$repo" --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || true)"
+            fi
+            [ -n "$actual_tag" ] || return 1
+            if gh release download "$actual_tag" \
+                --repo "$repo" \
+                --pattern "vohive_*_linux_${arch}" \
+                --dir "$tmpdir" 2>/dev/null; then
+              fetched="$(ls -1 "$tmpdir"/vohive_*_linux_${arch} 2>/dev/null | head -n1 || true)"
+            fi
+            [ -n "$fetched" ] && [ -s "$fetched" ]
+          }
+
+          for arch in arm64 amd64 armv7; do
+            out="source/vohive-core/files/vohive-${arch}"
+            tmpdir="$(mktemp -d)"
+            real_version=""
+            fetched=""
+
+            # 1) Main repo: voorz/vohive-next
+            if fetch_from_repo "voorz/vohive-next" "${VOHIVE_VERSION:-latest}" "$arch" "$tmpdir"; then
+              mv -f "$fetched" "$out"
+              real_version="$(basename "$fetched" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9](-[0-9]+-g[0-9a-f]+)?)_linux_.*/\1/')"
+              echo "::notice::${arch}: fetched $(basename "$fetched") from vohive-next (version ${real_version})."
             else
-              rm -f "${tmp}"
-              # 2) Fall back to preset dir (files/), pick the latest version
-              preset="$(ls -1 source/vohive-core/files/vohive_v*_linux_${arch} 2>/dev/null | sort -Vr | head -n1 || true)"
-              if [ -n "${preset}" ] && [ -s "${preset}" ]; then
-                cp -f "${preset}" "${out}"
-                real_version="$(basename "${preset}" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9])_linux_.*/\1/')"
-                echo "::warning::${arch}: release download failed, using preset ${preset##*/} (version ${real_version})."
+              rm -rf "$tmpdir" && tmpdir="$(mktemp -d)"
+              # 2) Release archive repo: voorz/vohive-release
+              if fetch_from_repo "voorz/vohive-release" "${VOHIVE_VERSION:-latest}" "$arch" "$tmpdir"; then
+                mv -f "$fetched" "$out"
+                real_version="$(basename "$fetched" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9](-[0-9]+-g[0-9a-f]+)?)_linux_.*/\1/')"
+                echo "::notice::${arch}: fetched $(basename "$fetched") from vohive-release (version ${real_version})."
               else
-                # 3) Neither available, skip this arch
-                echo "::notice::${arch}: no core available, skipping this arch."
-                rm -f "${out}"
-                continue
+                rm -rf "$tmpdir"
+                # 3) Fall back to preset dir (files/), pick the latest version
+                preset="$(ls -1 source/vohive-core/files/vohive_v*_linux_${arch} 2>/dev/null | sort -Vr | head -n1 || true)"
+                if [ -n "$preset" ] && [ -s "$preset" ]; then
+                  cp -f "$preset" "$out"
+                  real_version="$(basename "$preset" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9](-[0-9]+-g[0-9a-f]+)?)_linux_.*/\1/')"
+                  echo "::warning::${arch}: release download failed, using preset ${preset##*/} (version ${real_version})."
+                else
+                  # 4) Neither available, skip this arch
+                  echo "::notice::${arch}: no core available, skipping this arch."
+                  rm -f "$out"
+                  continue
+                fi
               fi
             fi
-            rm -f "${tmp}"
-            chmod 0755 "${out}"
-            echo "${real_version}" > "source/vohive-core/files/.version-${arch}"
+            rm -rf "$tmpdir"
+            chmod 0755 "$out"
+            echo "$real_version" > "source/vohive-core/files/.version-${arch}"
             echo "${arch}=${real_version}" >> "source/vohive-core/files/.available"
-            file "${out}"
+            file "$out"
             available="${available} ${arch}"
           done
           echo "AVAILABLE_ARCHS=${available# }" >> "$GITHUB_ENV"
