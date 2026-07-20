@@ -67,6 +67,23 @@ jobs:
           name: release-notes
           path: release-notes.md
 
+      - name: Notify Telegram - Build Started
+        if: ${{ secrets.TG_BOT_TOKEN != '' }}
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          changelog=$(grep '^-' release-notes.md | head -10)
+          tag="${{ steps.release_meta.outputs.tag_name }}"
+          {
+            printf '🔨 luci-app-vohive %s build triggered\n\nChangelog:\n' "$tag"
+            printf '%s\n' "$changelog"
+            printf '\n⏳ Building...'
+          } > tg-msg.txt
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -H 'Content-Type: application/json' \
+            -d "{\"chat_id\":\"${TG_CHAT_ID}\",\"text\":$(jq -Rs . < tg-msg.txt)}"
+
   build:
     name: Build ${{ matrix.label }}
     needs: prepare
@@ -339,3 +356,40 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           body_path: release-notes/release-notes.md
           files: releases/*
+
+  notify:
+    name: Notify Telegram
+    needs:
+      - prepare
+      - build
+    if: always() && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send build result
+        if: ${{ secrets.TG_BOT_TOKEN != '' }}
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          tag="$TAG_NAME"
+          repo="$REPO"
+          run_id="$RUN_ID"
+          if [ "$BUILD_RESULT" = "success" ]; then
+            {
+              printf '✅ luci-app-vohive %s build succeeded\n\n📦 Releases:\n' "$tag"
+              printf 'https://github.com/%s/releases/tag/%s' "$repo" "$tag"
+            } > tg-msg.txt
+          else
+            {
+              printf '❌ luci-app-vohive %s build failed (%s)\n\n🔍 Details:\n' "$tag" "$BUILD_RESULT"
+              printf 'https://github.com/%s/actions/runs/%s' "$repo" "$run_id"
+            } > tg-msg.txt
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -H 'Content-Type: application/json' \
+            -d "{\"chat_id\":\"${TG_CHAT_ID}\",\"text\":$(jq -Rs . < tg-msg.txt)}"
