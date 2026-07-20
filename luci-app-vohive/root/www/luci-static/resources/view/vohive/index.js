@@ -1166,17 +1166,27 @@ return view.extend({
 		]));
 
 		if (status.default_routes && status.default_routes.length > 0) {
-			var routeText = status.default_routes.map(function(r) {
-				return '%s (metric %s)'.format(r.dev, r.metric);
-			}).join(' · ');
 			integRows.push(E('tr', {}, [
-				E('td', {}, _('默认路由')),
-				E('td', { 'style': 'font-family:monospace; font-size:12px;' }, routeText)
+				E('td', {}, _('模块主力')),
+				E('td', {}, E('span', {
+					'style': 'color:%s; font-weight:700;'.format(status.is_primary ? '#37a24d' : '#d58512')
+				}, status.is_primary ? _('是') : _('否')))
 			]));
 		}
 
 		if (integrated) {
 			var isPrimary = status.is_primary;
+
+			/* Find cellular metric from default routes (QMI hardcoded, usually 5000) */
+			var cellularMetric = 5000;
+			if (status.default_routes && status.wwan_iface) {
+				for (var i = 0; i < status.default_routes.length; i++) {
+					if (status.default_routes[i].dev === status.wwan_iface) {
+						cellularMetric = status.default_routes[i].metric;
+						break;
+					}
+				}
+			}
 
 			var metricSelect = E('select', { 'class': 'cbi-input-select', 'style': 'min-width:10em;' });
 			var optBackup = E('option', { 'value': 'backup' }, _('备用（其他 WAN 优先）'));
@@ -1191,6 +1201,10 @@ return view.extend({
 			metricSelect.appendChild(optPrimary);
 			metricSelect.appendChild(optCustom);
 
+			var customHint = E('span', {
+				'style': 'font-size:12px; color:var(--text-color-medium); display:none; margin-left:.25em;'
+			}, _('模块跃点 %s，填 < %s 为备用，> %s 为主力').format(cellularMetric, cellularMetric, cellularMetric));
+
 			var customInput = E('input', {
 				'type': 'number', 'min': '0', 'max': '65535',
 				'class': 'cbi-input-text',
@@ -1199,7 +1213,9 @@ return view.extend({
 			});
 
 			metricSelect.addEventListener('change', function(ev) {
-				customInput.style.display = (ev.target.value === 'custom') ? 'inline-block' : 'none';
+				var isCustom = (ev.target.value === 'custom');
+				customInput.style.display = isCustom ? 'inline-block' : 'none';
+				customHint.style.display = isCustom ? 'inline' : 'none';
 			});
 
 			var applyBtn = E('button', {
@@ -1227,7 +1243,7 @@ return view.extend({
 
 			integRows.push(E('tr', {}, [
 				E('td', {}, _('路由优先级')),
-				E('td', { 'style': 'white-space:nowrap;' }, [ metricSelect, ' ', customInput, ' ', applyBtn ])
+				E('td', { 'style': 'white-space:nowrap;' }, [ metricSelect, ' ', customInput, ' ', applyBtn, ' ', customHint ])
 			]));
 		} else {
 			integRows.push(E('tr', {}, [
@@ -1272,6 +1288,8 @@ return view.extend({
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-reset',
 				'click': ui.createHandlerFn(self, function() {
+					if (!window.confirm(_('确认禁用网络服务吗？')))
+						return Promise.resolve();
 					return self.networkAction('disable');
 				})
 			}, _('禁用网络服务')));
@@ -1279,6 +1297,8 @@ return view.extend({
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
 				'click': ui.createHandlerFn(self, function() {
+					if (!window.confirm(_('确认启用网络服务吗？')))
+						return Promise.resolve();
 					return self.networkAction('enable');
 				})
 			}, _('启用网络服务')));
@@ -1322,14 +1342,42 @@ return view.extend({
 
 		return fs.exec_direct(script, args)
 			.then(function(text) {
-				ui.hideModal();
 				var result = parseJson(text);
-				notifyResult(text);
+				if (result.ok === false) {
+					ui.showModal(actionLabel + _('失败'), [
+						E('div', { 'class': 'cbi-section' }, [
+							E('p', { 'style': 'color:#d9534f; font-weight:700;' }, result.message || _('操作失败')),
+							E('div', { 'style': 'text-align:right; margin-top:1em;' }, [
+								E('button', {
+									'class': 'btn cbi-button cbi-button-neutral',
+									'click': ui.createHandlerFn(self, function() {
+										ui.hideModal();
+										return self.loadNetworkPane(self.networkPane);
+									})
+								}, _('确定'))
+							])
+						])
+					]);
+					return;
+				}
+				ui.hideModal();
 				return self.loadNetworkPane(self.networkPane);
 			})
 			.catch(function(e) {
-				ui.hideModal();
-				ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
+				ui.showModal(actionLabel + _('失败'), [
+					E('div', { 'class': 'cbi-section' }, [
+						E('p', { 'style': 'color:#d9534f; font-weight:700;' }, e.message || String(e)),
+						E('div', { 'style': 'text-align:right; margin-top:1em;' }, [
+							E('button', {
+								'class': 'btn cbi-button cbi-button-neutral',
+								'click': ui.createHandlerFn(self, function() {
+									ui.hideModal();
+									return self.loadNetworkPane(self.networkPane);
+								})
+							}, _('确定'))
+						])
+					])
+				]);
 			});
 	},
 
