@@ -121,7 +121,7 @@ jobs:
 
       - name: Prepare VoHive core files
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
         run: |
           set -eu
           mkdir -p source/vohive-core/files
