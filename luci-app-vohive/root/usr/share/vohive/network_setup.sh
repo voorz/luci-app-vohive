@@ -220,27 +220,52 @@ do_disable() {
 }
 
 # ---------------------------------------------------------------------------
-# Set metric: configure route metric for network.vohive interface
+# Set route priority: adjust other WAN interfaces' metric relative to cellular
+#
+# The cellular route metric (5000) is set by the QMI library and cannot be
+# changed via UCI.  Instead we toggle the metric of OTHER WAN interfaces:
+#   primary: set other WAN metric > 5000  → cellular wins
+#   backup:  set other WAN metric = 0     → other WAN wins
+#   custom:  set other WAN metric = <value>
 # ---------------------------------------------------------------------------
 do_set_metric() {
-	local metric="${1:-}"
-
-	case "$metric" in
-		''|*[!0-9]*) result_fail "无效的 metric 值: $metric" ;;
-	esac
-	[ "$metric" -ge 0 ] && [ "$metric" -le 65535 ] || result_fail "metric 范围: 0-65535"
+	local mode="${1:-}"
 
 	uci -q get network.vohive >/dev/null 2>&1 || result_fail "network.vohive 接口未创建，请先一键配置"
 
-	uci set network.vohive.metric="$metric"
+	local other_metric=""
+	case "$mode" in
+		primary) other_metric="5001" ;;
+		backup)  other_metric="0" ;;
+		*[!0-9]*|'') result_fail "无效的模式: $mode（可用: primary | backup | 0-65535）" ;;
+		*) [ "$mode" -ge 0 ] && [ "$mode" -le 65535 ] || result_fail "metric 范围: 0-65535"; other_metric="$mode" ;;
+	esac
+
+	# Find all networks in the wan firewall zone except vohive
+	local wan_idx wan_networks net changed=0
+	wan_idx="$(find_wan_zone_idx 2>/dev/null || true)"
+	[ -n "$wan_idx" ] || result_fail "未找到防火墙 wan 区域"
+
+	wan_networks="$(uci -q get "firewall.@zone[$wan_idx].network" 2>/dev/null || true)"
+	[ -n "$wan_networks" ] || result_fail "wan 区域中没有网络接口"
+
+	for net in $wan_networks; do
+		[ "$net" = "vohive" ] && continue
+		uci -q get "network.$net" >/dev/null 2>&1 || continue
+		uci set "network.$net.metric=$other_metric"
+		changed=1
+	done
+
+	[ "$changed" = "1" ] || result_fail "未找到可调整的 WAN 接口"
+
 	uci commit network
 	/etc/init.d/network reload 2>/dev/null || true
 
-	if [ "$metric" = "0" ]; then
-		result_ok "路由优先级已设为主力（metric 0，4G/5G 优先）"
-	else
-		result_ok "路由优先级已设为备用（metric $metric）"
-	fi
+	case "$mode" in
+		primary) result_ok "路由优先级已设为主力（4G/5G 优先，其他 WAN metric=$other_metric）" ;;
+		backup)  result_ok "路由优先级已设为备用（其他 WAN 优先，metric=0）" ;;
+		*)       result_ok "其他 WAN 接口 metric 已设为 $other_metric" ;;
+	esac
 }
 
 # ---------------------------------------------------------------------------

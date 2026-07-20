@@ -1176,41 +1176,26 @@ return view.extend({
 		}
 
 		if (integrated) {
-			var currentMetric = '';
-			if (status.default_routes && status.wwan_iface) {
-				for (var i = 0; i < status.default_routes.length; i++) {
-					if (status.default_routes[i].dev === status.wwan_iface) {
-						currentMetric = status.default_routes[i].metric;
-						break;
-				}
-				}
-			}
+			var isPrimary = status.is_primary;
 
 			var metricSelect = E('select', { 'class': 'cbi-input-select', 'style': 'min-width:10em;' });
-			var presetMetrics = [
-				[ '5000', _('备用（其他 WAN 优先）') ],
-				[ '0', _('主力（4G/5G 优先）') ]
-			];
-			var isPreset = false;
-			presetMetrics.forEach(function(m) {
-				var opt = E('option', { 'value': m[0] }, m[1]);
-				if (String(currentMetric) === m[0]) {
-					opt.setAttribute('selected', 'selected');
-					isPreset = true;
-				}
-				metricSelect.appendChild(opt);
-			});
-			var customOpt = E('option', { 'value': 'custom' }, _('自定义'));
-			if (!isPreset && currentMetric !== '') {
-				customOpt.setAttribute('selected', 'selected');
+			var optBackup = E('option', { 'value': 'backup' }, _('备用（其他 WAN 优先）'));
+			var optPrimary = E('option', { 'value': 'primary' }, _('主力（4G/5G 优先）'));
+			var optCustom = E('option', { 'value': 'custom' }, _('自定义'));
+			if (isPrimary) {
+				optPrimary.setAttribute('selected', 'selected');
+			} else {
+				optBackup.setAttribute('selected', 'selected');
 			}
-			metricSelect.appendChild(customOpt);
+			metricSelect.appendChild(optBackup);
+			metricSelect.appendChild(optPrimary);
+			metricSelect.appendChild(optCustom);
 
 			var customInput = E('input', {
 				'type': 'number', 'min': '0', 'max': '65535',
 				'class': 'cbi-input-text',
-				'style': 'width:6em; display:%s;'.format((!isPreset && currentMetric !== '') ? 'inline-block' : 'none'),
-				'value': (!isPreset && currentMetric !== '') ? currentMetric : ''
+				'style': 'width:6em; display:none;',
+				'placeholder': 'metric'
 			});
 
 			metricSelect.addEventListener('change', function(ev) {
@@ -1220,18 +1205,23 @@ return view.extend({
 			var applyBtn = E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
 				'click': ui.createHandlerFn(self, function() {
-					var metric = metricSelect.value;
-					if (metric === 'custom') {
-						metric = customInput.value;
-						if (!metric || metric < 0 || metric > 65535) {
+					var mode = metricSelect.value;
+					var label;
+					if (mode === 'custom') {
+						mode = customInput.value;
+						if (!mode || mode < 0 || mode > 65535) {
 							ui.addNotification(null, E('p', {}, _('请输入有效的 metric 值（0-65535）')), 'danger');
 							return Promise.resolve();
 						}
+						label = _('其他 WAN metric=%s').format(mode);
+					} else if (mode === 'primary') {
+						label = _('主力（4G/5G 优先）');
+					} else {
+						label = _('备用（其他 WAN 优先）');
 					}
-					var label = metric === '0' ? _('主力（4G/5G 优先）') : _('metric %s').format(metric);
 					if (!window.confirm(_('确认将路由优先级设为 %s 吗？').format(label)))
 						return Promise.resolve();
-					return self.networkAction('set_metric', [ metric ]);
+					return self.networkAction('set_metric', [ mode ]);
 				})
 			}, _('应用'));
 
