@@ -146,7 +146,10 @@ EOF
 
 # Determine routing priority
 # If wwan_iface route has the lowest metric, it's primary
+# When cellular has no route (network disabled), infer from other WAN metric:
+#   other WAN metric > 5000 (cellular metric) => cellular will be primary
 is_primary="false"
+cellular_metric=5000
 if [ -n "$wwan_iface" ] && [ "$route_count" -gt 0 ]; then
 	wwan_metric=""
 	other_min_metric=999999
@@ -164,7 +167,11 @@ if [ -n "$wwan_iface" ] && [ "$route_count" -gt 0 ]; then
 $(ip route show default 2>/dev/null || true)
 EOF
 	if [ -n "$wwan_metric" ]; then
+		# Cellular has a route: compare directly
 		[ "$wwan_metric" -le "$other_min_metric" ] 2>/dev/null && is_primary="true"
+	else
+		# Cellular has no route (network disabled): infer from other WAN metric
+		[ "$other_min_metric" -gt "$cellular_metric" ] 2>/dev/null && is_primary="true"
 	fi
 fi
 
