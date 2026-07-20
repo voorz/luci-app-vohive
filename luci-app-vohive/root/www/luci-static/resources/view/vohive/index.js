@@ -1082,7 +1082,6 @@ return view.extend({
 
 		var vohiveRunning = status.vohive_running;
 		var dataConnected = status.data_connected;
-		var networkEnabled = status.network_enabled;
 		var netConfigured = status.netifd_configured;
 		var fwConfigured = status.firewall_configured;
 		var integrated = netConfigured && fwConfigured;
@@ -1100,8 +1099,8 @@ return view.extend({
 		connRows.push(E('tr', {}, [
 			E('td', {}, _('网络服务')),
 			E('td', {}, E('span', {
-				'style': 'color:%s; font-weight:700;'.format(status.network_enabled ? '#37a24d' : '#d9534f')
-			}, status.network_enabled ? _('已启用') : _('已禁用')))
+				'style': 'color:%s; font-weight:700;'.format(status.network_connected ? '#37a24d' : '#d9534f')
+			}, status.network_connected ? _('已启用') : _('已禁用')))
 		]));
 
 		connRows.push(E('tr', {}, [
@@ -1176,12 +1175,78 @@ return view.extend({
 			]));
 		}
 
-		integRows.push(E('tr', {}, [
-			E('td', {}, _('路由优先级')),
-			E('td', {}, E('span', {
-				'style': 'color:%s; font-weight:700;'.format(status.is_primary ? '#37a24d' : '#d58512')
-			}, status.is_primary ? _('主力（4G/5G 优先）') : _('备用（其他 WAN 优先）')))
-		]));
+		if (integrated) {
+			var currentMetric = '';
+			if (status.default_routes && status.wwan_iface) {
+				for (var i = 0; i < status.default_routes.length; i++) {
+					if (status.default_routes[i].dev === status.wwan_iface) {
+						currentMetric = status.default_routes[i].metric;
+						break;
+				}
+				}
+			}
+
+			var metricSelect = E('select', { 'class': 'cbi-input-select', 'style': 'min-width:10em;' });
+			var presetMetrics = [
+				[ '5000', _('备用（其他 WAN 优先）') ],
+				[ '0', _('主力（4G/5G 优先）') ]
+			];
+			var isPreset = false;
+			presetMetrics.forEach(function(m) {
+				var opt = E('option', { 'value': m[0] }, m[1]);
+				if (String(currentMetric) === m[0]) {
+					opt.setAttribute('selected', 'selected');
+					isPreset = true;
+				}
+				metricSelect.appendChild(opt);
+			});
+			var customOpt = E('option', { 'value': 'custom' }, _('自定义'));
+			if (!isPreset && currentMetric !== '') {
+				customOpt.setAttribute('selected', 'selected');
+			}
+			metricSelect.appendChild(customOpt);
+
+			var customInput = E('input', {
+				'type': 'number', 'min': '0', 'max': '65535',
+				'class': 'cbi-input-text',
+				'style': 'width:6em; display:%s;'.format((!isPreset && currentMetric !== '') ? 'inline-block' : 'none'),
+				'value': (!isPreset && currentMetric !== '') ? currentMetric : ''
+			});
+
+			metricSelect.addEventListener('change', function(ev) {
+				customInput.style.display = (ev.target.value === 'custom') ? 'inline-block' : 'none';
+			});
+
+			var applyBtn = E('button', {
+				'class': 'btn cbi-button cbi-button-apply',
+				'click': ui.createHandlerFn(self, function() {
+					var metric = metricSelect.value;
+					if (metric === 'custom') {
+						metric = customInput.value;
+						if (!metric || metric < 0 || metric > 65535) {
+							ui.addNotification(null, E('p', {}, _('请输入有效的 metric 值（0-65535）')), 'danger');
+							return Promise.resolve();
+						}
+					}
+					var label = metric === '0' ? _('主力（4G/5G 优先）') : _('metric %s').format(metric);
+					if (!window.confirm(_('确认将路由优先级设为 %s 吗？').format(label)))
+						return Promise.resolve();
+					return self.networkAction('set_metric', [ metric ]);
+				})
+			}, _('应用'));
+
+			integRows.push(E('tr', {}, [
+				E('td', {}, _('路由优先级')),
+				E('td', { 'style': 'white-space:nowrap;' }, [ metricSelect, ' ', customInput, ' ', applyBtn ])
+			]));
+		} else {
+			integRows.push(E('tr', {}, [
+				E('td', {}, _('路由优先级')),
+				E('td', {}, E('span', {
+					'style': 'color:%s; font-weight:700;'.format(status.is_primary ? '#37a24d' : '#d58512')
+				}, status.is_primary ? _('主力（4G/5G 优先）') : _('备用（其他 WAN 优先）')))
+			]));
+		}
 
 		nodes.push(E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('路由器集成')),
@@ -1212,21 +1277,21 @@ return view.extend({
 			}, _('撤销配置')));
 		}
 
-		// VoHive network: enable or disable based on switch state (not data connection)
-		if (networkEnabled) {
+		// VoHive network: enable or disable based on connection state
+		if (status.network_connected) {
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-reset',
 				'click': ui.createHandlerFn(self, function() {
 					return self.networkAction('disable');
 				})
-			}, _('禁用网络')));
+			}, _('禁用网络服务')));
 		} else {
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
 				'click': ui.createHandlerFn(self, function() {
 					return self.networkAction('enable');
 				})
-			}, _('启用网络')));
+			}, _('启用网络服务')));
 		}
 
 		actionBtns.push(E('button', {
@@ -1249,17 +1314,23 @@ return view.extend({
 		return E('div', {}, nodes);
 	},
 
-	networkAction: function(action) {
+	networkAction: function(action, extraArgs) {
 		var self = this;
 		var script = '/usr/share/vohive/network_setup.sh';
 
+		var actionLabel = action === 'setup' ? _('配置路由器') : action === 'restore' ? _('撤销配置') : action === 'enable' ? _('启用网络服务') : action === 'disable' ? _('禁用网络服务') : action === 'set_metric' ? _('设置路由优先级') : _('执行操作');
+
 		ui.showModal(_('网络配置'), [
 			E('div', { 'class': 'cbi-section' }, [
-				E('em', { 'class': 'spinning' }, _('正在') + (action === 'setup' ? _('配置路由器') : action === 'restore' ? _('撤销配置') : action === 'enable' ? _('启用网络') : _('禁用网络')) + _('...'))
+				E('em', { 'class': 'spinning' }, _('正在') + actionLabel + _('...'))
 			])
 		]);
 
-		return fs.exec_direct(script, [ action ])
+		var args = [ action ];
+		if (extraArgs)
+			args = args.concat(extraArgs);
+
+		return fs.exec_direct(script, args)
 			.then(function(text) {
 				ui.hideModal();
 				var result = parseJson(text);

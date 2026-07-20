@@ -6,6 +6,7 @@
 #   network_setup.sh restore   Remove network.vohive + firewall config (router config only)
 #   network_setup.sh enable    Enable VoHive network via API only (no router config changes)
 #   network_setup.sh disable   Disable VoHive network via API only (no router config changes)
+#   network_setup.sh set_metric <value>  Set route metric for network.vohive interface
 
 set -eu
 
@@ -219,6 +220,30 @@ do_disable() {
 }
 
 # ---------------------------------------------------------------------------
+# Set metric: configure route metric for network.vohive interface
+# ---------------------------------------------------------------------------
+do_set_metric() {
+	local metric="${1:-}"
+
+	case "$metric" in
+		''|*[!0-9]*) result_fail "无效的 metric 值: $metric" ;;
+	esac
+	[ "$metric" -ge 0 ] && [ "$metric" -le 65535 ] || result_fail "metric 范围: 0-65535"
+
+	uci -q get network.vohive >/dev/null 2>&1 || result_fail "network.vohive 接口未创建，请先一键配置"
+
+	uci set network.vohive.metric="$metric"
+	uci commit network
+	/etc/init.d/network reload 2>/dev/null || true
+
+	if [ "$metric" = "0" ]; then
+		result_ok "路由优先级已设为主力（metric 0，4G/5G 优先）"
+	else
+		result_ok "路由优先级已设为备用（metric $metric）"
+	fi
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 case "$ACTION" in
@@ -234,7 +259,10 @@ case "$ACTION" in
 	disable)
 		do_disable
 		;;
+	set_metric)
+		do_set_metric "${2:-}"
+		;;
 	*)
-		result_fail "用法: network_setup.sh <setup|restore|enable|disable>"
+		result_fail "用法: network_setup.sh <setup|restore|enable|disable|set_metric> [value]"
 		;;
 esac
