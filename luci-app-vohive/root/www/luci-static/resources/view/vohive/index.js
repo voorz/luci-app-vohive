@@ -34,6 +34,27 @@ function notifyResult(text) {
 		ui.addNotification(null, E('p', {}, result.message || _('操作完成')), 'info');
 }
 
+function confirmModal(title, message) {
+	return new Promise(function(resolve) {
+		ui.showModal(title, [
+			E('div', { 'class': 'cbi-section' }, [
+				E('p', {}, message),
+				E('div', { 'style': 'text-align:right; margin-top:1em;' }, [
+					E('button', {
+						'class': 'btn cbi-button cbi-button-neutral',
+						'click': function() { ui.hideModal(); resolve(false); }
+					}, _('取消')),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button cbi-button-apply',
+						'click': function() { ui.hideModal(); resolve(true); }
+					}, _('确认'))
+				])
+			])
+		]);
+	});
+}
+
 function resultDetails(result) {
 	if (!result || !result.output)
 		return '';
@@ -1235,9 +1256,8 @@ return view.extend({
 					} else {
 						label = _('备用（其他 WAN 优先）');
 					}
-					if (!window.confirm(_('确认将路由优先级设为 %s 吗？').format(label)))
-						return Promise.resolve();
-					return self.networkAction('set_metric', [ mode ]);
+					return confirmModal(_('路由优先级'), _('确认将路由优先级设为 %s 吗？').format(label))
+						.then(function(ok) { return ok ? self.networkAction('set_metric', [ mode ]) : Promise.resolve(); });
 				})
 			}, _('应用'));
 
@@ -1267,18 +1287,16 @@ return view.extend({
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
 				'click': ui.createHandlerFn(self, function() {
-					if (!window.confirm(_('确认配置路由器吗？将创建网络接口并加入防火墙 wan 域。')))
-						return Promise.resolve();
-					return self.networkAction('setup');
+					return confirmModal(_('网络配置'), _('确认配置路由器吗？将创建网络接口并加入防火墙 wan 域。'))
+						.then(function(ok) { return ok ? self.networkAction('setup') : Promise.resolve(); });
 				})
 			}, _('一键配置')));
 		} else {
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-reset',
 				'click': ui.createHandlerFn(self, function() {
-					if (!window.confirm(_('确认撤销配置吗？这将移除网络接口和防火墙配置，恢复原始状态。')))
-						return Promise.resolve();
-					return self.networkAction('restore');
+					return confirmModal(_('网络配置'), _('确认撤销配置吗？这将移除网络接口和防火墙配置，恢复原始状态。'))
+						.then(function(ok) { return ok ? self.networkAction('restore') : Promise.resolve(); });
 				})
 			}, _('撤销配置')));
 		}
@@ -1288,18 +1306,16 @@ return view.extend({
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-reset',
 				'click': ui.createHandlerFn(self, function() {
-					if (!window.confirm(_('确认禁用网络服务吗？')))
-						return Promise.resolve();
-					return self.networkAction('disable');
+					return confirmModal(_('网络配置'), _('确认禁用网络服务吗？'))
+						.then(function(ok) { return ok ? self.networkAction('disable') : Promise.resolve(); });
 				})
 			}, _('禁用网络服务')));
 		} else {
 			actionBtns.push(E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
 				'click': ui.createHandlerFn(self, function() {
-					if (!window.confirm(_('确认启用网络服务吗？')))
-						return Promise.resolve();
-					return self.networkAction('enable');
+					return confirmModal(_('网络配置'), _('确认启用网络服务吗？'))
+						.then(function(ok) { return ok ? self.networkAction('enable') : Promise.resolve(); });
 				})
 			}, _('启用网络服务')));
 		}

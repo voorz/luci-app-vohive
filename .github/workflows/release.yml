@@ -68,11 +68,11 @@ jobs:
           path: release-notes.md
 
       - name: Notify Telegram - Build Started
-        if: ${{ secrets.TG_BOT_TOKEN != '' }}
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
+          [ -n "$TG_BOT_TOKEN" ] || exit 0
           changelog=$(grep '^-' release-notes.md | head -10)
           tag="${{ steps.release_meta.outputs.tag_name }}"
           {
@@ -367,7 +367,6 @@ jobs:
 
     steps:
       - name: Send build result
-        if: ${{ secrets.TG_BOT_TOKEN != '' }}
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
@@ -376,6 +375,7 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
         run: |
+          [ -n "$TG_BOT_TOKEN" ] || exit 0
           tag="$TAG_NAME"
           repo="$REPO"
           run_id="$RUN_ID"
