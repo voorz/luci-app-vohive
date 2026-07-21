@@ -156,14 +156,14 @@ jobs:
             # 1) Main repo: voorz/vohive-next
             if fetch_from_repo "voorz/vohive-next" "${VOHIVE_VERSION:-latest}" "$arch" "$tmpdir"; then
               mv -f "$fetched" "$out"
-              real_version="$(basename "$fetched" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9](-[0-9]+-g[0-9a-f]+)?)_linux_.*/\1/')"
+              real_version="$(basename "$fetched" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9])(-[0-9]+-g[0-9a-f]+)?_linux_.*/\1/')"
               echo "::notice::${arch}: fetched $(basename "$fetched") from vohive-next (version ${real_version})."
             else
               rm -rf "$tmpdir" && tmpdir="$(mktemp -d)"
               # 2) Release archive repo: voorz/vohive-release
               if fetch_from_repo "voorz/vohive-release" "${VOHIVE_VERSION:-latest}" "$arch" "$tmpdir"; then
                 mv -f "$fetched" "$out"
-                real_version="$(basename "$fetched" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9](-[0-9]+-g[0-9a-f]+)?)_linux_.*/\1/')"
+                real_version="$(basename "$fetched" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9])(-[0-9]+-g[0-9a-f]+)?_linux_.*/\1/')"
                 echo "::notice::${arch}: fetched $(basename "$fetched") from vohive-release (version ${real_version})."
               else
                 rm -rf "$tmpdir"
@@ -171,7 +171,7 @@ jobs:
                 preset="$(ls -1 source/vohive-core/files/vohive_v*_linux_${arch} 2>/dev/null | sort -Vr | head -n1 || true)"
                 if [ -n "$preset" ] && [ -s "$preset" ]; then
                   cp -f "$preset" "$out"
-                  real_version="$(basename "$preset" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9](-[0-9]+-g[0-9a-f]+)?)_linux_.*/\1/')"
+                  real_version="$(basename "$preset" | sed -E 's/^vohive_(v[0-9][0-9.]*[0-9])(-[0-9]+-g[0-9a-f]+)?_linux_.*/\1/')"
                   echo "::warning::${arch}: release download failed, using preset ${preset##*/} (version ${real_version})."
                 else
                   # 4) Neither available, skip this arch
