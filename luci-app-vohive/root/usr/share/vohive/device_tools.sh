@@ -4,7 +4,8 @@ ACTION="${1:-status}"
 PORT="${2:-}"
 TARGET="${3:-}"
 
-DEFAULT_TIMEOUT_SECONDS=2
+DEFAULT_TIMEOUT_SECONDS=1
+AT_PROBE_TIMEOUT=1
 
 json_escape() {
 	printf '%s' "$1" | tr -d '\r' | awk '
@@ -81,12 +82,17 @@ bind_option_id() {
 
 	modprobe option 2>/dev/null || true
 	[ -w "$new_id" ] || return 0
-	# 每次都写入 new_id，触发驱动重新探测未绑定的接口
-	# 重复写入是安全的：驱动会自动跳过已绑定的接口
+	# 仅当 new_id 中尚无该 VID:PID 时才写入，避免重复条目堆积
+	grep -qi "^${vendor} ${product}\$" "$new_id" 2>/dev/null && return 0
 	printf '%s %s\n' "$vendor" "$product" > "$new_id" 2>/dev/null || true
 }
 
 prepare_serial_driver() {
+	# 串口已存在时跳过 bind_option_id，避免 new_id 重复写入
+	# 触发 option 驱动抢占 QMI 接口（interface 04）
+	if [ -n "$(serial_ports)" ]; then
+		return 0
+	fi
 	bind_option_id 2ca3 4006
 	bind_option_id 2c7c 0125
 	bind_option_id 2c7c 0124
@@ -106,28 +112,21 @@ at_with_socat() {
 	local port="$1"
 	local command="$2"
 	local timeout_seconds="${3:-$DEFAULT_TIMEOUT_SECONDS}"
-	local tmp="/tmp/vohive/socat.$$"
-	local input="/tmp/vohive/socat-in.$$"
-	local pid elapsed limit
+	local response=""
 
-	mkdir -p /tmp/vohive
-	limit=$((timeout_seconds + 1))
-	printf '%s\r\n' "$command" > "$input"
-	socat -T "$timeout_seconds" - "OPEN:$port,raw,echo=0,crnl" < "$input" > "$tmp" 2>&1 &
-	pid="$!"
-	elapsed=0
-	while [ "$elapsed" -lt "$limit" ]; do
-		if grep -Eq '(^|[[:space:]])(OK|ERROR)|\+CME ERROR:' "$tmp" 2>/dev/null; then
-			break
-		fi
-		kill -0 "$pid" 2>/dev/null || break
-		sleep 1
-		elapsed=$((elapsed + 1))
+	# 使用 shell 内置 read -t 直接操作串口 fd，收到 OK/ERROR 立即返回。
+	# 避免 socat 在 OpenWRT 上阻塞在 read() 导致 SIGTERM/SIGKILL 延迟的问题。
+	exec 3<>"$port" 2>/dev/null || return 1
+	printf '%s\r\n' "$command" >&3 2>/dev/null
+	while IFS= read -t "$timeout_seconds" -r line <&3 2>/dev/null; do
+		response="${response}${line}
+"
+		case "$line" in
+			*OK*|*ERROR*|*CME\ ERROR*) break ;;
+		esac
 	done
-	kill "$pid" 2>/dev/null || true
-	wait "$pid" 2>/dev/null || true
-	cat "$tmp" 2>/dev/null | sed '/socat\[[0-9][0-9]*\] W exiting on signal 15/d' || true
-	rm -f "$tmp" "$input"
+	exec 3>&- 2>/dev/null || true
+	printf '%s' "$response"
 }
 
 at_with_shell() {
@@ -433,14 +432,34 @@ is_at_candidate_port() {
 	local ifnum
 
 	ifnum="$(sysfs_interface_number "$port" 2>/dev/null || true)"
+	# 仅探测 interface 02/03：这些是 Quectel/DJI 模块的 AT 端口。
+	# interface 00/01 是诊断/NMEA 端口，不响应 AT 且会导致串口 close() 阻塞。
 	case "$ifnum" in
-		00|01|02|03|'')
+		02|03|'')
 			return 0
 			;;
 		*)
 			return 1
 			;;
 	esac
+}
+
+# Return the sysfs path of the parent USB device (the directory that has idVendor)
+# for a given tty port. Used to group ports by physical USB device.
+usb_device_syspath() {
+	local dir current
+
+	dir="$(tty_sysfs_dir "$1" 2>/dev/null || true)"
+	[ -n "$dir" ] || return 1
+	current="$dir"
+	while [ -n "$current" ] && [ "$current" != "/" ]; do
+		if [ -r "$current/idVendor" ]; then
+			printf '%s' "$current"
+			return 0
+		fi
+		current="${current%/*}"
+	done
+	return 1
 }
 
 at_query() {
@@ -493,7 +512,7 @@ probe_port_json() {
 	elif ! is_at_candidate_port "$port"; then
 		output="跳过非 AT 候选接口：USB interface ${ifnum:-未知}"
 	else
-		at="$(at_query "$port" AT 1)"
+		at="$(at_query "$port" AT "$AT_PROBE_TIMEOUT")"
 		output="AT:\n$at"
 	fi
 
@@ -504,21 +523,8 @@ probe_port_json() {
 		qnet="$(at_query "$port" 'AT+QCFG="usbnet"' 2)"
 		output="AT:\n$at\n\nATI:\n$ati\n\nAT+QCFG=\"usbcfg\":\n$qcfg\n\nAT+QCFG=\"usbnet\":\n$qnet"
 
-		if [ "$full" = 1 ]; then
-			cgmi="$(at_query "$port" AT+CGMI 2)"
-			cgmm="$(at_query "$port" AT+CGMM 2)"
-			cgmr="$(at_query "$port" AT+CGMR 2)"
-			cgsn="$(at_query "$port" AT+CGSN 2)"
-			qccid="$(at_query "$port" AT+QCCID 2)"
-			cpin="$(at_query "$port" 'AT+CPIN?' 2)"
-			csq="$(at_query "$port" AT+CSQ 2)"
-			qnwinfo="$(at_query "$port" AT+QNWINFO 2)"
-			qspn="$(at_query "$port" AT+QSPN 2)"
-			cops="$(at_query "$port" 'AT+COPS?' 2)"
-			qtemp="$(at_query "$port" AT+QTEMP 2)"
-			cgpaddr="$(at_query "$port" AT+CGPADDR=1 2)"
-			output="AT:\n$at\n\nATI:\n$ati\n\nAT+CGMI:\n$cgmi\n\nAT+CGMM:\n$cgmm\n\nAT+CGMR:\n$cgmr\n\nAT+CGSN:\n$cgsn\n\nAT+QCCID:\n$qccid\n\nAT+CPIN?:\n$cpin\n\nAT+CSQ:\n$csq\n\nAT+QNWINFO:\n$qnwinfo\n\nAT+QSPN:\n$qspn\n\nAT+COPS?:\n$cops\n\nAT+QTEMP:\n$qtemp\n\nAT+CGPADDR=1:\n$cgpaddr\n\nAT+QCFG=\"usbcfg\":\n$qcfg\n\nAT+QCFG=\"usbnet\":\n$qnet"
-		fi
+		# Full probe 已移除：IMEI/ICCID/信号等信息由核心 API 提供，
+		# 插件仅保留基础探测（AT/ATI/QCFG）以加速扫描
 
 		cfg="$(extract_usb_cfg "$qcfg")"
 		cfg_identity="$(identity_from_cfg "$cfg")"
@@ -526,11 +532,7 @@ probe_port_json() {
 		profile="$(usbnet_profile "$cfg_identity")"
 		usbnet="$(extract_usbnet "$qnet")"
 		usbnet_name="$(usbnet_label "$usbnet" "$profile")"
-		if [ "$full" = 1 ]; then
-			module="$(printf '%s %s %s' "$(clean_at_value "$cgmi")" "$(clean_at_value "$cgmm")" "$(clean_at_value "$cgmr")" | sed 's/[[:space:]][[:space:]]*/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//')"
-		else
-			module="$(clean_at_value "$ati")"
-		fi
+		module="$(clean_at_value "$ati")"
 		if [ "$allow_config" = 1 ]; then
 			case "$cfg_identity" in
 				dji|ec25|ec21)
@@ -611,6 +613,7 @@ status_json() {
 
 probe_json() {
 	local first=1 full_done=0 config_done=0 full allow_config probe_at port tmp port_json
+	local current_dev="" port_dev
 
 	prepare_serial_driver
 	printf '{"ok":true,'
@@ -622,6 +625,14 @@ probe_json() {
 	printf '"ports":['
 	for port in $(serial_ports); do
 		task_progress "probe" "正在探测 $port"
+		# Detect USB device change — reset per-device flags so each physical
+		# module gets its own full probe and primary AT port detection.
+		port_dev="$(usb_device_syspath "$port" 2>/dev/null || true)"
+		if [ -n "$port_dev" ] && [ "$port_dev" != "$current_dev" ]; then
+			current_dev="$port_dev"
+			full_done=0
+			config_done=0
+		fi
 		full=0
 		allow_config=0
 		probe_at=1
