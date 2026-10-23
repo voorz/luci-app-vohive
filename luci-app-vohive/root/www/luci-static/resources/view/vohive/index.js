@@ -493,12 +493,9 @@ return view.extend({
 	},
 
 	checkVersionUpdates: function(ev) {
-		var btn = ev && ev.target && ev.target.closest ? ev.target.closest('button') : null;
-		if (btn) {
-			btn.disabled = true;
-			dom.content(btn, E('em', { 'class': 'spinning' }, ''));
-		}
 		this.checkingVersions = true;
+		if (this.lastStatus)
+			this.updateStatusNode(this.lastStatus);
 
 		var self = this;
 		return Promise.all([
