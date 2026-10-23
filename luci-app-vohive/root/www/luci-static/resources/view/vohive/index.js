@@ -612,17 +612,13 @@ return view.extend({
 			dom.content(self.coreSectionNode, coreEl);
 
 			return E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'display:flex; gap:2em; flex-wrap:wrap;' }, [
-					E('div', { 'style': 'flex:1 1 320px; min-width:260px;' }, self.statusNode),
-					E('div', { 'style': 'flex:1 1 320px; min-width:260px;' }, [
-						E('div', {
-							'style': 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap;'
-						}, [
-							E('h3', { 'style': 'margin-bottom:.75em;' }, _('基础配置'))
-						]),
-						self.configFieldsNode
-					])
+				self.statusNode,
+				E('div', {
+					'style': 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap; margin-top:1.25em;'
+				}, [
+					E('h3', { 'style': 'margin-bottom:.75em;' }, _('基础配置'))
 				]),
+				self.configFieldsNode,
 				self.actionRowNode
 			]);
 		});
@@ -987,10 +983,10 @@ return view.extend({
 	/* ---------------------------------------------------------- */
 
 	renderConfigFields: function() {
-		var inputStyle = 'width:100%; box-sizing:border-box;';
+		var inputStyle = 'width:300px; max-width:100%; box-sizing:border-box;';
 		var field = function(label, input) {
-			return E('div', { 'style': 'margin-bottom:.8em;' }, [
-				E('label', { 'style': 'display:block; font-weight:600; margin-bottom:.3em;' }, label),
+			return E('div', { 'style': 'display:flex; align-items:center; gap:.75em; flex-wrap:wrap; margin-bottom:.8em;' }, [
+				E('label', { 'style': 'flex:0 0 7em; font-weight:600;' }, label),
 				input
 			]);
 		};
@@ -998,7 +994,7 @@ return view.extend({
 
 		return [
 			field(_('监听端口'), E('input', {
-				'type': 'number', 'min': '1', 'max': '65535', 'style': inputStyle,
+				'type': 'number', 'min': '1', 'max': '65535', 'style': 'width:120px; max-width:100%; box-sizing:border-box;',
 				'data-opt': 'port', 'value': uci.get('vohive', 'main', 'port') || '7575'
 			})),
 			field(_('Web 用户名'), E('input', {
