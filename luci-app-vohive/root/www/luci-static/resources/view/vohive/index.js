@@ -504,6 +504,7 @@ return view.extend({
 			btn.disabled = true;
 			dom.content(btn, E('em', { 'class': 'spinning' }, ''));
 		}
+		this.checkingVersions = true;
 
 		var self = this;
 		return Promise.all([
@@ -516,6 +517,7 @@ return view.extend({
 			if (!self.releasesData.versions)
 				self.releasesData.versions = [];
 			self.pluginData = parseJson(res[1]);
+			self.checkingVersions = false;
 			return self.refreshStatus();
 		}).then(function(fresh) {
 			return Promise.all([
@@ -523,6 +525,7 @@ return view.extend({
 				self.refreshPluginSection()
 			]);
 		}).catch(function() {
+			self.checkingVersions = false;
 			return self.refreshStatus();
 		});
 	},
@@ -979,21 +982,24 @@ return view.extend({
 		if (!root || !status)
 			return;
 
-		var webBtn = root.querySelector('a.vohive-webui-btn');
+		var webBtn = root.querySelector('.vohive-webui-btn');
 		if (status.running) {
 			var href = 'http://%s:%s'.format(window.location.hostname, status.port || '7575');
 			if (webBtn) {
-				webBtn.setAttribute('href', href);
+				webBtn.setAttribute('data-url', href);
 				return;
 			}
 			var applyBtn = root.querySelector('[id$="._apply_config"]');
 			if (!applyBtn)
 				return;
-			webBtn = E('a', {
+			webBtn = E('button', {
+				'type': 'button',
 				'class': (applyBtn.getAttribute('class') || 'btn cbi-button cbi-button-apply') + ' vohive-webui-btn',
-				'target': '_blank',
-				'href': href,
-				'style': 'display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; margin-left:.5em; vertical-align:middle; text-decoration:none;'
+				'data-url': href,
+				'click': function(ev) {
+					window.open(ev.currentTarget.getAttribute('data-url'), '_blank');
+				},
+				'style': 'display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; margin-left:.5em; vertical-align:middle;'
 			}, _('打开 VoHive Web UI'));
 			applyBtn.parentNode.insertBefore(webBtn, applyBtn.nextSibling);
 			webBtn.style.height = applyBtn.offsetHeight + 'px';
@@ -1095,10 +1101,12 @@ return view.extend({
 			[ _('服务状态'), statusBadge(status.running) ],
 			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
 			[ _('插件版本'), E('span', {}, [ pluginVersionText, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), pluginLatest, ' ', E('button', {
-				'class': 'btn cbi-button cbi-button-action',
+				'class': 'vohive-check-btn',
 				'title': _('检查更新'),
+				'style': 'background:none; border:none; box-shadow:none; padding:2px 6px; margin:0; cursor:pointer; color:inherit; font:inherit; vertical-align:middle;',
+				'disabled': this.checkingVersions ? true : null,
 				'click': ui.createHandlerFn(this, this.checkVersionUpdates)
-			}, E('svg', {
+			}, this.checkingVersions ? E('em', { 'class': 'spinning' }, '') : E('svg', {
 				'viewBox': '0 0 24 24',
 				'width': '15',
 				'height': '15',
