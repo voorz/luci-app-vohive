@@ -985,11 +985,11 @@ return view.extend({
 	renderConfigFields: function() {
 		var inputStyle = 'width:300px; max-width:100%; box-sizing:border-box;';
 		var row = function(label, input) {
-			return E('tr', {}, [ E('td', {}, label), E('td', {}, input) ]);
+			return E('tr', {}, [ E('td', { 'style': 'width:30%;' }, label), E('td', {}, input) ]);
 		};
 		var level = uci.get('vohive', 'main', 'log_level') || 'debug';
 
-		return E('table', { 'class': 'table' }, [
+		return E('table', { 'class': 'table', 'style': 'table-layout:fixed;' }, [
 			row(_('监听端口'), E('input', {
 				'type': 'number', 'min': '1', 'max': '65535', 'style': inputStyle,
 				'data-opt': 'port', 'value': uci.get('vohive', 'main', 'port') || '7575'
@@ -1137,8 +1137,8 @@ return view.extend({
 			rows.push([ _('数据目录空间'), progressbar(status.data_used_kb, status.data_total_kb, status.data_percent) ]);
 		}
 
-		var table = E('table', { 'class': 'table' }, rows.map(function(row) {
-			return E('tr', {}, [ E('td', {}, row[0]), E('td', {}, row[1]) ]);
+		var table = E('table', { 'class': 'table', 'style': 'table-layout:fixed;' }, rows.map(function(row) {
+			return E('tr', {}, [ E('td', { 'style': 'width:30%;' }, row[0]), E('td', {}, row[1]) ]);
 		}));
 
 		var warnings = [];
