@@ -53,7 +53,7 @@ host="$(uci_get host '0.0.0.0')"
 port="$(uci_get port '7575')"
 username="$(uci_get username 'admin')"
 password="$(uci_get password 'admin')"
-log_level="$(uci_get log_level 'info')"
+log_level="$(uci_get log_level 'debug')"
 data_path="$(uci_get data_path '/etc/vohive/data')"
 
 case "$port" in

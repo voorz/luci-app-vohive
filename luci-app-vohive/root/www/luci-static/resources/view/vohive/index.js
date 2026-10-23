@@ -1001,7 +1001,7 @@ return view.extend({
 		o.value('info', 'info');
 		o.value('warn', 'warn');
 		o.value('error', 'error');
-		o.default = 'info';
+		o.default = 'debug';
 
 		o = s.option(form.Value, 'data_path', _('数据目录'));
 		o.default = '/etc/vohive/data';
