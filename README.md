@@ -69,8 +69,6 @@ Download the matching package from [Releases](https://github.com/voorz/luci-app-
 
 The LuCI plugin source in this repo is released under **MIT** (see `PKG_LICENSE` inside the package).
 
-The VoHive **core binary** and its license follow [voorz/vohive-next](https://github.com/voorz/vohive-next).
-
 ---
 
 <p align="center">
