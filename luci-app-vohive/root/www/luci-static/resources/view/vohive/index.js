@@ -1066,7 +1066,7 @@ return view.extend({
 		}
 
 		var rows = [
-			[ _('服务状态'), statusBadge(status.running) ],
+			[ _('服务状态'), E('span', {}, [ statusBadge(status.running), ' ', status.running ? E('a', { 'class': 'btn cbi-button cbi-button-action', 'target': '_blank', 'href': webUrl }, _('打开 VoHive Web UI')) : '' ]) ],
 			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
 			[ _('插件版本'), E('span', {}, [ pluginVersionText, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), pluginLatest, ' ', E('button', {
 				'class': 'btn cbi-button cbi-button-action',
@@ -1105,11 +1105,7 @@ return view.extend({
 				E('h3', { 'style': 'margin-bottom:.75em;' }, _('运行状态'))
 			]),
 			table
-		].concat(warnings).concat([
-			E('div', { 'style': 'display:flex; align-items:center; justify-content:flex-start; margin-top:.75em; flex-wrap:wrap; gap:1em;' }, [
-				status.running ? E('a', { 'class': 'btn cbi-button cbi-button-action', 'target': '_blank', 'href': webUrl }, _('打开 VoHive Web UI')) : ''
-			])
-		]));
+		].concat(warnings));
 	},
 
 updateStatusNode: function(status) {
