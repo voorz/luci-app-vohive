@@ -87,12 +87,6 @@ function runScript(path, args) {
 	});
 }
 
-function saveApplyThen(map, fn) {
-	return map.save()
-		.then(function() { return ui.changes.apply(false); })
-		.then(fn);
-}
-
 function progressbar(usedKb, totalKb, percent) {
 	var used = (parseInt(usedKb) || 0) * 1024;
 	var total = (parseInt(totalKb) || 0) * 1024;
@@ -602,22 +596,34 @@ return view.extend({
 	/* 概览页                                                     */
 	/* ---------------------------------------------------------- */
 
-	renderOverview: function(status, releases, plugin, configNode) {
+	renderOverview: function(status, releases, plugin) {
 		var self = this;
 
 		this.statusNode = E('div', {}, this.renderStatus(status, releases, plugin));
 		this.releasesData = releases;
 		this.pluginData = plugin;
+		this.lastStatus = status;
 
-		this.configNode = configNode;
+		this.configFieldsNode = E('div', {}, this.renderConfigFields());
+		this.actionRowNode = E('div', {}, this.renderActionRow(status));
 		this.coreSectionNode = E('div', {});
 
 		return this.renderCoreManagement(status, releases).then(function(coreEl) {
 			dom.content(self.coreSectionNode, coreEl);
 
-			return E('div', {}, [
-				self.statusNode,
-				configNode
+			return E('div', { 'class': 'cbi-section' }, [
+				E('div', { 'style': 'display:flex; gap:2em; flex-wrap:wrap;' }, [
+					E('div', { 'style': 'flex:1 1 320px; min-width:260px;' }, self.statusNode),
+					E('div', { 'style': 'flex:1 1 320px; min-width:260px;' }, [
+						E('div', {
+							'style': 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap;'
+						}, [
+							E('h3', { 'style': 'margin-bottom:.75em;' }, _('基础配置'))
+						]),
+						self.configFieldsNode
+					])
+				]),
+				self.actionRowNode
 			]);
 		});
 	},
@@ -980,91 +986,96 @@ return view.extend({
 	/* 基础配置 / 日志                                            */
 	/* ---------------------------------------------------------- */
 
-	syncWebUiButton: function(status, rootNode) {
-		var root = rootNode || this.configNode;
-		if (!root || !status)
-			return;
+	renderConfigFields: function() {
+		var inputStyle = 'width:100%; box-sizing:border-box;';
+		var field = function(label, input) {
+			return E('div', { 'style': 'margin-bottom:.8em;' }, [
+				E('label', { 'style': 'display:block; font-weight:600; margin-bottom:.3em;' }, label),
+				input
+			]);
+		};
+		var level = uci.get('vohive', 'main', 'log_level') || 'debug';
 
-		var webBtn = root.querySelector('.vohive-webui-btn');
-		if (status.running) {
-			var href = 'http://%s:%s'.format(window.location.hostname, status.port || '7575');
-			if (webBtn) {
-				webBtn.setAttribute('data-url', href);
-				return;
-			}
-			var applyBtn = root.querySelector('button[id$="._apply_config"], input[id$="._apply_config"]');
-			if (!applyBtn)
-				return;
-			webBtn = E('button', {
-				'type': 'button',
-				'class': 'btn cbi-button cbi-button-apply vohive-webui-btn',
-				'data-url': href,
-				'click': function(ev) {
-					window.open(ev.currentTarget.getAttribute('data-url'), '_blank');
-				},
-				'style': 'margin-left:.5em;'
-			}, _('打开 VoHive Web UI'));
-			applyBtn.parentNode.insertBefore(webBtn, applyBtn.nextSibling);
-		} else if (webBtn) {
-			webBtn.remove();
-		}
+		return [
+			field(_('监听端口'), E('input', {
+				'type': 'number', 'min': '1', 'max': '65535', 'style': inputStyle,
+				'data-opt': 'port', 'value': uci.get('vohive', 'main', 'port') || '7575'
+			})),
+			field(_('Web 用户名'), E('input', {
+				'type': 'text', 'style': inputStyle, 'autocomplete': 'off',
+				'data-opt': 'username', 'value': uci.get('vohive', 'main', 'username') || 'admin'
+			})),
+			field(_('登录凭据'), E('input', {
+				'type': 'text', 'style': inputStyle, 'autocomplete': 'off',
+				'data-opt': 'password', 'value': uci.get('vohive', 'main', 'password') || 'admin'
+			})),
+			field(_('日志级别'), E('select', {
+				'style': inputStyle, 'data-opt': 'log_level'
+			}, [ 'debug', 'info', 'warn', 'error' ].map(function(l) {
+				return E('option', { 'value': l, 'selected': (l === level) ? '' : null }, l);
+			}))),
+			field(_('数据目录'), E('input', {
+				'type': 'text', 'style': inputStyle,
+				'data-opt': 'data_path', 'value': uci.get('vohive', 'main', 'data_path') || '/etc/vohive/data'
+			}))
+		];
 	},
 
-	renderConfigMap: function(status) {
-		var self = this;
-		var m = new form.Map('vohive');
-		var s, o;
+	renderActionRow: function(status) {
+		var running = !!status.running;
+		var toggleColor = running ? '#d9534f' : '#37a24d';
 
-		s = m.section(form.NamedSection, 'main', 'vohive', _('基础配置'));
-		s.addremove = false;
+		var children = [
+			E('button', {
+				'class': 'btn cbi-button',
+				'style': 'color:#fff; background:%s; border-color:%s;'.format(toggleColor, toggleColor),
+				'click': ui.createHandlerFn(this, function() { return this.toggleService(running); })
+			}, running ? _('停止') : _('启动')),
+			E('button', {
+				'class': 'btn cbi-button cbi-button-apply',
+				'title': _('重新应用新的更改并重启vohive核心'),
+				'click': ui.createHandlerFn(this, function() { return this.applyConfigFields(); })
+			}, _('重载'))
+		];
 
-		o = s.option(form.Flag, 'enabled', _('启用服务'));
-		o.rmempty = false;
-		o.default = '0';
+		if (running) {
+			children.push(E('button', {
+				'class': 'btn cbi-button cbi-button-apply',
+				'data-url': 'http://' + window.location.hostname + ':' + (status.port || 7575) + '/',
+				'click': function(ev) { window.open(ev.currentTarget.getAttribute('data-url'), '_blank'); }
+			}, _('打开 VoHive Web UI')));
+		}
 
-		o = s.option(form.Value, 'port', _('监听端口'));
-		o.rmempty = false;
-		o.default = '7575';
-		o.datatype = 'port';
+		return E('div', { 'style': 'margin-top:1em; display:flex; gap:.5em; flex-wrap:wrap; align-items:center;' }, children);
+	},
 
-		o = s.option(form.Value, 'username', _('Web 用户名'));
-		o.default = 'admin';
-		o.rmempty = false;
+	toggleService: function(running) {
+		return runScript('/usr/share/vohive/service.sh', [ running ? 'stop' : 'start' ]);
+	},
 
-		o = s.option(form.Value, 'password', _('登录凭据'));
-		o.default = 'admin';
-		o.rmempty = false;
+	applyConfigFields: function() {
+		var values = {};
 
-		o = s.option(form.ListValue, 'log_level', _('日志级别'));
-		o.rmempty = false;
-		o.value('debug', 'debug');
-		o.value('info', 'info');
-		o.value('warn', 'warn');
-		o.value('error', 'error');
-		o.default = 'debug';
-
-		o = s.option(form.Value, 'data_path', _('数据目录'));
-		o.rmempty = false;
-		o.default = '/etc/vohive/data';
-		o.validate = function(section_id, value) {
-			return /^\/.+/.test(value) || _('必须是绝对路径');
-		};
-
-		o = s.option(form.Button, '_apply_config', _('配置更新'));
-		o.inputtitle = _('重载');
-		o.inputstyle = 'apply';
-		o.onclick = ui.createHandlerFn(this, function() {
-			return saveApplyThen(m, function() {
-				return runScript('/usr/share/vohive/apply_config.sh', []);
-			});
+		this.configFieldsNode.querySelectorAll('[data-opt]').forEach(function(input) {
+			values[input.getAttribute('data-opt')] = input.value;
 		});
 
-		return m.render().then(function(node) {
-			node.querySelectorAll('input[id$=".username"]').forEach(function(input) {
-				input.setAttribute('autocomplete', 'off');
-			});
-			self.syncWebUiButton(status, node);
-			return node;
+		var port = parseInt(values.port, 10);
+		if (!(port >= 1 && port <= 65535)) {
+			ui.addNotification(null, E('p', {}, _('监听端口必须是 1-65535 之间的数字')), 'danger');
+			return Promise.resolve();
+		}
+		if (!/^\/.+/.test(values.data_path || '')) {
+			ui.addNotification(null, E('p', {}, _('数据目录必须是绝对路径')), 'danger');
+			return Promise.resolve();
+		}
+
+		Object.keys(values).forEach(function(key) {
+			uci.set('vohive', 'main', key, values[key]);
+		});
+
+		return uci.save().then(function() {
+			return runScript('/usr/share/vohive/apply_config.sh', []);
 		});
 	},
 
@@ -1141,22 +1152,24 @@ return view.extend({
 		if (!status.core_installed)
 			warnings.push(E('div', { 'class': 'alert-message warning', 'style': 'margin-top:.5em;' }, _('VoHive 核心尚未安装。')));
 
-		return E('div', { 'class': 'cbi-section' }, [
+		return [
 			E('div', {
 				'style': 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap;'
 			}, [
 				E('h3', { 'style': 'margin-bottom:.75em;' }, _('运行状态'))
 			]),
 			table
-		].concat(warnings));
+		].concat(warnings);
 	},
 
 updateStatusNode: function(status) {
 	if (!this.statusNode)
 		return;
 
+	this.lastStatus = status;
 	dom.content(this.statusNode, this.renderStatus(status, this.releasesData, this.pluginData));
-	this.syncWebUiButton(status);
+	if (this.actionRowNode)
+		dom.content(this.actionRowNode, this.renderActionRow(status));
 },
 
 	refreshStatus: function() {
@@ -1290,13 +1303,13 @@ updateStatusNode: function(status) {
 			releases.versions = [];
 
 		return Promise.all([
-			this.renderConfigMap(status)
-		]).then(function(rendered) {
+			Promise.resolve(null)
+		]).then(function() {
 			poll.add(this.refreshStatus.bind(this), 5);
 
 			var self = this;
 
-			return this.renderOverview(status, releases, plugin, rendered[0]).then(function(overviewEl) {
+			return this.renderOverview(status, releases, plugin).then(function(overviewEl) {
 				var networkPane = E('div', {}, [
 					E('div', { 'class': 'cbi-section' }, E('em', {}, _('点击集成后读取连接状态。')))
 				]);
