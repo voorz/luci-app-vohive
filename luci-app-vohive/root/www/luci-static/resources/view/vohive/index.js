@@ -983,9 +983,6 @@ return view.extend({
 		o = s.option(form.Flag, 'enabled', _('启用服务'));
 		o.default = '0';
 
-		o = s.option(form.Value, 'host', _('监听地址'));
-		o.default = '0.0.0.0';
-
 		o = s.option(form.Value, 'port', _('监听端口'));
 		o.default = '7575';
 		o.datatype = 'port';
