@@ -973,7 +973,7 @@ return view.extend({
 	/* 基础配置 / 日志                                            */
 	/* ---------------------------------------------------------- */
 
-	renderConfigMap: function() {
+	renderConfigMap: function(status) {
 		var m = new form.Map('vohive');
 		var s, o;
 
@@ -1021,12 +1021,24 @@ return view.extend({
 			node.querySelectorAll('input[id$=".username"]').forEach(function(input) {
 				input.setAttribute('autocomplete', 'off');
 			});
+			if (status && status.running) {
+				var applyBtn = node.querySelector('[id$="._apply_config"]');
+				if (applyBtn) {
+					var webBtn = E('a', {
+						'class': applyBtn.getAttribute('class') || 'btn cbi-button cbi-button-apply',
+						'target': '_blank',
+						'href': 'http://%s:%s'.format(window.location.hostname, status.port || '7575'),
+						'style': 'display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; margin-left:.5em; vertical-align:middle; text-decoration:none;'
+					}, _('打开 VoHive Web UI'));
+					applyBtn.parentNode.insertBefore(webBtn, applyBtn.nextSibling);
+					webBtn.style.height = applyBtn.offsetHeight + 'px';
+				}
+			}
 			return node;
 		});
 	},
 
 	renderStatus: function(status, releases, plugin) {
-		var webUrl = 'http://%s:%s'.format(window.location.hostname, status.port || '7575');
 		var releaseRepo = releaseRepoSlug(uci.get('vohive', 'main', 'release_repo'));
 		var pluginRepo = DEFAULT_PLUGIN_REPO;
 		var coreVersion = status.core_installed ? (status.core_version || _('已安装')) : _('未安装');
@@ -1062,7 +1074,7 @@ return view.extend({
 		}
 
 		var rows = [
-			[ _('服务状态'), E('span', {}, [ statusBadge(status.running), ' ', status.running ? E('a', { 'class': 'btn cbi-button cbi-button-action', 'target': '_blank', 'href': webUrl }, _('打开 VoHive Web UI')) : '' ]) ],
+			[ _('服务状态'), statusBadge(status.running) ],
 			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
 			[ _('插件版本'), E('span', {}, [ pluginVersionText, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), pluginLatest, ' ', E('button', {
 				'class': 'btn cbi-button cbi-button-action',
@@ -1251,7 +1263,7 @@ updateStatusNode: function(status) {
 			releases.versions = [];
 
 		return Promise.all([
-			this.renderConfigMap()
+			this.renderConfigMap(status)
 		]).then(function(rendered) {
 			poll.add(this.refreshStatus.bind(this), 5);
 
