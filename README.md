@@ -25,7 +25,6 @@
 <p align="center">
   <a href="#overview">Overview</a> ·
   <a href="#features">Features</a> ·
-  <a href="#installation">Install</a>
 </p>
 
 ---
