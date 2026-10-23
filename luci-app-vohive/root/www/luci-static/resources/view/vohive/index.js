@@ -893,8 +893,7 @@ return view.extend({
 			E('table', { 'class': 'table' }, integRows),
 			E('div', { 'style': 'display:flex; gap:.5em; flex-wrap:wrap; margin-top:.75em;' }, actionBtns),
 			E('p', { 'style': 'margin-top:.75em; color:var(--text-color-medium); font-size:13px;' }, _(
-				'一键配置将创建不配置协议的网络接口并加入防火墙 wan 域，' +
-				'使经该接口转发的流量获得 NAT 能力。模组是否联网由 VoHive 核心自身管理。'
+				'创建网络接口并加入防火墙 wan 域，提供 NAT 转发；联网由核心管理。'
 			))
 		]));
 
