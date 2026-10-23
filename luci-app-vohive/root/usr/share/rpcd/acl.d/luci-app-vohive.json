@@ -1,0 +1,31 @@
+{
+	"luci-app-vohive": {
+		"description": "Grant access to VoHive LuCI app",
+		"read": {
+		"uci": [ "vohive", "network", "firewall" ],
+		"file": {
+			"/usr/share/vohive/status.sh": [ "exec" ],
+			"/usr/share/vohive/logs.sh": [ "exec" ],
+			"/usr/share/vohive/releases.sh": [ "exec" ],
+			"/usr/share/vohive/plugin_status.sh": [ "exec" ],
+			"/usr/share/vohive/task_status.sh": [ "exec" ],
+			"/usr/share/vohive/network_status.sh": [ "exec" ]
+		}
+		},
+		"write": {
+		"uci": [ "vohive", "network", "firewall" ],
+		"file": {
+			"/usr/share/vohive/apply_config.sh": [ "exec" ],
+			"/usr/share/vohive/network_setup.sh": [ "exec" ],
+				"/usr/share/vohive/install_core.sh": [ "exec" ],
+				"/usr/share/vohive/install_deps.sh": [ "exec" ],
+				"/usr/share/vohive/clear_logs.sh": [ "exec" ],
+				"/usr/share/vohive/update_plugin.sh": [ "exec" ],
+				"/usr/share/vohive/task_start.sh": [ "exec" ],
+				"/usr/share/vohive/task_cancel.sh": [ "exec" ],
+				"/tmp/vohive/download/vohive-core-upload": [ "write" ]
+			},
+			"cgi-io": [ "upload" ]
+		}
+	}
+}

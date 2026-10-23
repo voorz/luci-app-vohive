@@ -1,0 +1,306 @@
+name: Release Packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  TZ: Asia/Shanghai
+
+jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.release_meta.outputs.tag_name }}
+      luci_version: ${{ steps.release_meta.outputs.luci_version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve versions
+        id: release_meta
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag_name="${GITHUB_REF_NAME}"
+            luci_version="${GITHUB_REF_NAME#v}"
+          else
+            tag_name="v0.0.0-dev"
+            luci_version="0.0.0-dev"
+          fi
+
+          previous_tag="$(git tag --sort=-v:refname --merged HEAD | grep -v "^${tag_name}$" | head -n 1 || true)"
+
+          {
+            echo "## VoHive LuCI ${luci_version}"
+            echo
+            echo "### Changelog"
+            echo
+            if [ -n "$previous_tag" ]; then
+              git log --pretty=format:'- %s (%h)' "${previous_tag}..HEAD"
+            else
+              git log --pretty=format:'- %s (%h)' -n 20
+            fi
+            echo
+            echo
+          } > release-notes.md
+
+          echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
+          echo "luci_version=${luci_version}" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=${previous_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+
+      - name: Notify Telegram - Build Started
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          [ -n "$TG_BOT_TOKEN" ] || exit 0
+          changelog=$(grep '^-' release-notes.md | head -10)
+          tag="${{ steps.release_meta.outputs.tag_name }}"
+          {
+            printf '🔨 luci-app-vohive %s build triggered\n\nChangelog:\n' "$tag"
+            printf '%s\n' "$changelog"
+            printf '\n⏳ Building...'
+          } > tg-msg.txt
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -H 'Content-Type: application/json' \
+            -d "{\"chat_id\":\"${TG_CHAT_ID}\",\"text\":$(jq -Rs . < tg-msg.txt)}"
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: openwrt_24_ipk
+            label: OpenWrt 24.10 IPK
+          - id: openwrt_25_apk
+            label: OpenWrt 25.12 APK
+
+    steps:
+      - name: Install packages
+        run: |
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install zstd build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev python3 rsync unzip zlib1g-dev file wget curl
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: source
+
+      - name: Import SDK environment
+        id: sdk_env
+        run: |
+          cat "source/.github/workflows/${{ matrix.id }}.env" >> "$GITHUB_ENV"
+          while IFS='=' read -r key value; do
+            echo "${key,,}=${value}" >> "$GITHUB_OUTPUT"
+          done < "source/.github/workflows/${{ matrix.id }}.env"
+
+      - name: Initialize SDK
+        env:
+          SDK_FILE: ${{ steps.sdk_env.outputs.sdk_name }}.${{ steps.sdk_env.outputs.sdk_ext }}
+          SDK_SOURCE: ${{ steps.sdk_env.outputs.sdk_url }}${{ steps.sdk_env.outputs.sdk_name }}.${{ steps.sdk_env.outputs.sdk_ext }}
+        run: |
+          set -eu
+          wget "$SDK_SOURCE"
+          mkdir -p sdk
+          if [ "${SDK_EXT}" = "tar.zst" ]; then
+            tar --zstd -xf "$SDK_FILE" -C sdk --strip-components=1
+          else
+            tar -xf "$SDK_FILE" -C sdk --strip-components=1
+          fi
+
+          cd sdk
+          cat <<EOF > feeds.conf
+          src-git base https://github.com/openwrt/openwrt.git;${FEED_BRANCH}
+          src-git packages https://github.com/openwrt/packages.git;${FEED_BRANCH}
+          src-git luci https://github.com/openwrt/luci.git;${FEED_BRANCH}
+          src-git routing https://git.openwrt.org/feed/routing.git;${FEED_BRANCH}
+          src-link vohive $(pwd)/../source
+          EOF
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          ./scripts/feeds install -a -p vohive
+
+          cat <<'EOF' > .config
+          CONFIG_ALL_NONSHARED=n
+          CONFIG_ALL_KMODS=n
+          CONFIG_ALL=n
+          CONFIG_AUTOREMOVE=n
+          CONFIG_PACKAGE_luci-app-vohive=m
+          EOF
+          make defconfig
+          make clean
+
+      - name: Compile packages
+        run: |
+          set -eu
+          cd sdk
+          ./scripts/feeds update vohive
+          ./scripts/feeds install -a -p vohive
+
+          # Inject PKG_VERSION from the tag (the repo carries none)
+          sed -i "/^PKG_NAME:=/i PKG_VERSION?=${{ needs.prepare.outputs.luci_version }}" \
+            feeds/vohive/luci-app-vohive/Makefile
+
+          make "package/feeds/vohive/luci-app-vohive/clean" || true
+          if ! make "package/feeds/vohive/luci-app-vohive/compile" -j"$(nproc)"; then
+            make "package/feeds/vohive/luci-app-vohive/compile" -j1 V=s
+          fi
+
+          package_dir="$(pwd)/bin/packages/${SDK_ARCH}/vohive"
+          dist_dir="$(pwd)/../dist/${{ matrix.id }}"
+          mkdir -p "$dist_dir"
+
+          shopt -s nullglob
+          package_files=("$package_dir"/*.${PACKAGE_EXT})
+          if [ ${#package_files[@]} -eq 0 ]; then
+            echo "No .${PACKAGE_EXT} packages were produced in ${package_dir}" >&2
+            exit 1
+          fi
+
+          cp "$package_dir"/*.${PACKAGE_EXT} "$dist_dir"/
+          cp "$package_dir"/Packages* "$dist_dir"/ 2>/dev/null || true
+          cp "$package_dir"/APKINDEX* "$dist_dir"/ 2>/dev/null || true
+
+          {
+            echo "Tag: ${{ needs.prepare.outputs.tag_name }}"
+            echo "LuCI version: ${{ needs.prepare.outputs.luci_version }}"
+            echo "Build: ${{ matrix.label }}"
+            echo "Build ID: ${{ matrix.id }}"
+            echo "SDK: ${SDK_NAME}"
+            echo "Package format: ${PACKAGE_EXT}"
+            echo "Package count: ${#package_files[@]}"
+          } > "$dist_dir/BUILD-INFO.txt"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vohive-${{ matrix.id }}
+          path: dist/${{ matrix.id }}
+          retention-days: 7
+          include-hidden-files: true
+
+  release:
+    name: Publish Release
+    needs:
+      - prepare
+      - build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: vohive-*
+          merge-multiple: false
+
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes
+
+      - name: Collect release assets
+        run: |
+          set -eu
+          mkdir -p releases
+          shopt -s nullglob
+
+          for dir in artifacts/*; do
+            [ -d "$dir" ] || continue
+            for package in "$dir"/*.ipk "$dir"/*.apk; do
+              [ -f "$package" ] || continue
+              cp "$package" releases/
+            done
+          done
+
+          (cd releases && sha256sum *.ipk *.apk 2>/dev/null > sha256sums.txt || true)
+          ls -lh releases
+
+      - name: Generate package table in release notes
+        run: |
+          set -eu
+          {
+            echo "### Packages"
+            echo
+            echo "| Package | Description |"
+            echo "|---------|-------------|"
+            echo "| \`luci-app-vohive_*.ipk/apk\` | LuCI management page (required), without VoHive core binary |"
+            echo
+            echo "### How to choose"
+            echo
+            echo "1. **Check OpenWrt version**:"
+            echo "   - OpenWrt / Kwrt **24.x** → download **.ipk**"
+            echo "   - OpenWrt / Kwrt **25.x** → download **.apk**"
+            echo "2. **Install** \`luci-app-vohive\`, then install the VoHive core online from the LuCI 'Core management' page (or upload a core binary there)"
+            echo
+            if [ -n "${{ needs.prepare.outputs.previous_tag }}" ]; then
+              echo "Full comparison: https://github.com/${GITHUB_REPOSITORY}/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.tag_name }}"
+            fi
+          } >> release-notes/release-notes.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          body_path: release-notes/release-notes.md
+          files: releases/*
+
+  notify:
+    name: Notify Telegram
+    needs:
+      - prepare
+      - build
+    if: always() && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send build result
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          [ -n "$TG_BOT_TOKEN" ] || exit 0
+          tag="$TAG_NAME"
+          repo="$REPO"
+          run_id="$RUN_ID"
+          if [ "$BUILD_RESULT" = "success" ]; then
+            {
+              printf '✅ luci-app-vohive %s build succeeded\n\n📦 Releases:\n' "$tag"
+              printf 'https://github.com/%s/releases/tag/%s' "$repo" "$tag"
+            } > tg-msg.txt
+          else
+            {
+              printf '❌ luci-app-vohive %s build failed (%s)\n\n🔍 Details:\n' "$tag" "$BUILD_RESULT"
+              printf 'https://github.com/%s/actions/runs/%s' "$repo" "$run_id"
+            } > tg-msg.txt
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -H 'Content-Type: application/json' \
+            -d "{\"chat_id\":\"${TG_CHAT_ID}\",\"text\":$(jq -Rs . < tg-msg.txt)}"
