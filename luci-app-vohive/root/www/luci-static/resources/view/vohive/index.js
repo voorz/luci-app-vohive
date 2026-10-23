@@ -986,7 +986,7 @@ return view.extend({
 		var inputStyle = 'width:300px; max-width:100%; box-sizing:border-box;';
 		var field = function(label, input) {
 			return E('div', { 'style': 'display:flex; align-items:center; gap:.75em; flex-wrap:wrap; margin-bottom:.8em;' }, [
-				E('label', { 'style': 'flex:0 0 7em; font-weight:600;' }, label),
+				E('span', { 'style': 'flex:0 0 7em; font-size:1em;' }, label),
 				input
 			]);
 		};
