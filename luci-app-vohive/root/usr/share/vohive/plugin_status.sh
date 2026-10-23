@@ -78,7 +78,7 @@ fi
 latest="$(printf '%s' "$json" | jsonfilter -e '@[0].tag_name' 2>/dev/null || true)"
 latest_norm="$(normalize_plugin_version "$latest")"
 has_update=false
-[ -n "$latest_norm" ] && [ "$current_norm" != "$latest_norm" ] && has_update=true
+[ -n "$latest_norm" ] && version_gt "$latest_norm" "$current_norm" && has_update=true
 
 printf '{"ok":true,"repo":"%s","current":"%s","latest":"%s","has_update":%s,"serial_driver_installed":%s,"option_driver_installed":%s,"versions":[' \
 	"$(json_escape "$PLUGIN_REPO")" \

@@ -180,6 +180,12 @@ update_plugin() {
 	}
 
 	printf '%s\n' "$tag_norm" > /usr/share/vohive/plugin_version 2>/dev/null || true
+	# Refresh the plugin-status cache with the release this task already
+	# fetched (wrapped as a list, the cache's format), so the next page
+	# load compares against post-update data, not a stale snapshot.
+	mkdir -p /tmp/vohive
+	printf '[%s]' "$json" > /tmp/vohive/plugin-releases.json
+	date +%s > /tmp/vohive/plugin-releases.ts
 	rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
 	finish_ok "LuCI 插件已更新到 $tag，页面即将刷新。"
 }

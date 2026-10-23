@@ -205,6 +205,21 @@ select_plugin_asset() {
 	return 1
 }
 
+# True when dotted version $1 is strictly newer than $2 (numeric fields).
+version_gt() {
+	awk -v a="$1" -v b="$2" 'BEGIN {
+		na = split(a, x, "."); nb = split(b, y, ".");
+		n = (na > nb) ? na : nb;
+		for (i = 1; i <= n; i++) {
+			va = (i <= na) ? x[i] + 0 : 0;
+			vb = (i <= nb) ? y[i] + 0 : 0;
+			if (va > vb) exit 0;
+			if (va < vb) exit 1;
+		}
+		exit 1;
+	}'
+}
+
 normalize_plugin_version() {
 	local version="${1#v}"
 	version="${version%-r*}"
