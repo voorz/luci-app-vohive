@@ -9,8 +9,9 @@ VERSION_FILE="/usr/share/vohive/plugin_version"
 limit="${1:-5}"
 force="${2:-}"
 
-# Cloud version checks are cached for 24h: page loads serve the cache,
-# only an explicit force (the check button) or an expired cache refetches.
+# Cloud version checks are manual: page loads pass 'cached' and only
+# ever read the cache (never the network); the check button passes
+# 'force' and is the single path that talks to GitHub.
 CACHE_DIR="/tmp/vohive"
 CACHE_FILE="$CACHE_DIR/plugin-releases.json"
 CACHE_TS="$CACHE_DIR/plugin-releases.ts"
@@ -39,6 +40,19 @@ if [ "$force" != "force" ] && [ -s "$CACHE_FILE" ] && [ -f "$CACHE_TS" ]; then
 	age=$(( $(date +%s) - $(cat "$CACHE_TS" 2>/dev/null || echo 0) ))
 	if [ "$age" -ge 0 ] && [ "$age" -lt "$CACHE_TTL" ]; then
 		json="$(cat "$CACHE_FILE")"
+	fi
+fi
+if [ -z "$json" ] && [ "$force" = "cached" ]; then
+	if [ -s "$CACHE_FILE" ]; then
+		json="$(cat "$CACHE_FILE")"
+	else
+		printf '{"ok":false,"message":"%s","repo":"%s","current":"%s","latest":"","has_update":false,"serial_driver_installed":%s,"option_driver_installed":%s,"versions":[]}\n' \
+			"$(json_escape "Not checked yet")" \
+			"$(json_escape "$PLUGIN_REPO")" \
+			"$(json_escape "$current_norm")" \
+			"$serial_driver_installed" \
+			"$option_driver_installed"
+		exit 0
 	fi
 fi
 if [ -z "$json" ]; then

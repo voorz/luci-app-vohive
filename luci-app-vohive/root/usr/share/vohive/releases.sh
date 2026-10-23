@@ -8,8 +8,9 @@ repo="$(github_repo_slug "$(uci_get release_repo "$DEFAULT_CORE_REPO")")"
 limit="${1:-5}"
 force="${2:-}"
 
-# Cloud version checks are cached for 24h: page loads serve the cache,
-# only an explicit force (the check button) or an expired cache refetches.
+# Cloud version checks are manual: page loads pass 'cached' and only
+# ever read the cache (never the network); the check button passes
+# 'force' and is the single path that talks to GitHub.
 CACHE_DIR="/tmp/vohive"
 CACHE_SLUG="$(printf '%s' "$repo" | tr '/' '-')"
 CACHE_FILE="$CACHE_DIR/releases-$CACHE_SLUG.json"
@@ -31,6 +32,14 @@ if [ "$force" != "force" ] && [ -s "$CACHE_FILE" ] && [ -f "$CACHE_TS" ]; then
 	age=$(( $(date +%s) - $(cat "$CACHE_TS" 2>/dev/null || echo 0) ))
 	if [ "$age" -ge 0 ] && [ "$age" -lt "$CACHE_TTL" ]; then
 		json="$(cat "$CACHE_FILE")"
+	fi
+fi
+if [ -z "$json" ] && [ "$force" = "cached" ]; then
+	if [ -s "$CACHE_FILE" ]; then
+		json="$(cat "$CACHE_FILE")"
+	else
+		printf '{"ok":false,"message":"%s","latest":"","versions":[]}\n' "$(json_escape "Not checked yet")"
+		exit 0
 	fi
 fi
 if [ -z "$json" ]; then

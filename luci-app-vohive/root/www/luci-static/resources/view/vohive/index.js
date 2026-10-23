@@ -250,8 +250,8 @@ return view.extend({
 			uci.load('vohive'),
 			fs.exec_direct('/usr/share/vohive/status.sh', []).catch(function() { return '{}'; }),
 			fs.exec_direct('/usr/share/vohive/logs.sh', [ '100' ]).catch(function() { return ''; }),
-			fs.exec_direct('/usr/share/vohive/releases.sh', [ '5' ]).catch(function() { return '{"ok":false,"versions":[]}'; }),
-			fs.exec_direct('/usr/share/vohive/plugin_status.sh', [ '5' ]).catch(function() { return '{"ok":false}'; })
+			fs.exec_direct('/usr/share/vohive/releases.sh', [ '5', 'cached' ]).catch(function() { return '{"ok":false,"versions":[]}'; }),
+			fs.exec_direct('/usr/share/vohive/plugin_status.sh', [ '5', 'cached' ]).catch(function() { return '{"ok":false}'; })
 		]);
 	},
 
