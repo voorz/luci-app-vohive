@@ -502,7 +502,7 @@ return view.extend({
 		var btn = ev && ev.target && ev.target.closest ? ev.target.closest('button') : null;
 		if (btn) {
 			btn.disabled = true;
-			dom.content(btn, loadingText(_('检查中...')));
+			dom.content(btn, E('em', { 'class': 'spinning' }, ''));
 		}
 
 		var self = this;
@@ -1069,7 +1069,7 @@ return view.extend({
 			[ _('服务状态'), statusBadge(status.running) ],
 			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
 			[ _('插件版本'), E('span', {}, [ pluginVersionText, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), pluginLatest, ' ', E('button', {
-				'class': 'btn cbi-button cbi-button-neutral',
+				'class': 'btn cbi-button cbi-button-action',
 				'title': _('检查更新'),
 				'click': ui.createHandlerFn(this, this.checkVersionUpdates)
 			}, '🔄'), ' ', E('button', {
