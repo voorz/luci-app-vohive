@@ -984,37 +984,34 @@ return view.extend({
 
 	renderConfigFields: function() {
 		var inputStyle = 'width:300px; max-width:100%; box-sizing:border-box;';
-		var field = function(label, input) {
-			return E('div', { 'style': 'display:flex; align-items:center; gap:.75em; flex-wrap:wrap; margin-bottom:.8em;' }, [
-				E('span', { 'style': 'flex:0 0 7em; font-size:1em;' }, label),
-				input
-			]);
+		var row = function(label, input) {
+			return E('tr', {}, [ E('td', {}, label), E('td', {}, input) ]);
 		};
 		var level = uci.get('vohive', 'main', 'log_level') || 'debug';
 
-		return [
-			field(_('监听端口'), E('input', {
+		return E('table', { 'class': 'table' }, [
+			row(_('监听端口'), E('input', {
 				'type': 'number', 'min': '1', 'max': '65535', 'style': 'width:120px; max-width:100%; box-sizing:border-box;',
 				'data-opt': 'port', 'value': uci.get('vohive', 'main', 'port') || '7575'
 			})),
-			field(_('Web 用户名'), E('input', {
+			row(_('Web 用户名'), E('input', {
 				'type': 'text', 'style': inputStyle, 'autocomplete': 'off',
 				'data-opt': 'username', 'value': uci.get('vohive', 'main', 'username') || 'admin'
 			})),
-			field(_('登录凭据'), E('input', {
+			row(_('登录凭据'), E('input', {
 				'type': 'text', 'style': inputStyle, 'autocomplete': 'off',
 				'data-opt': 'password', 'value': uci.get('vohive', 'main', 'password') || 'admin'
 			})),
-			field(_('日志级别'), E('select', {
+			row(_('日志级别'), E('select', {
 				'style': inputStyle, 'data-opt': 'log_level'
 			}, [ 'debug', 'info', 'warn', 'error' ].map(function(l) {
 				return E('option', { 'value': l, 'selected': (l === level) ? '' : null }, l);
 			}))),
-			field(_('数据目录'), E('input', {
+			row(_('数据目录'), E('input', {
 				'type': 'text', 'style': inputStyle,
 				'data-opt': 'data_path', 'value': uci.get('vohive', 'main', 'data_path') || '/etc/vohive/data'
 			}))
-		];
+		]);
 	},
 
 	renderActionRow: function(status) {
