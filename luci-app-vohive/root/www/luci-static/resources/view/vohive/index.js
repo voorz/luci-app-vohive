@@ -1107,6 +1107,9 @@ return view.extend({
 		var checkIcon = E('span', { 'style': 'display:inline-block; width:15px; height:15px; vertical-align:-2px;' });
 		checkIcon.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" style="display:block" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>';
 
+		var busyIcon = E('span', { 'style': 'display:inline-block; width:15px; height:15px; vertical-align:-2px;' });
+		busyIcon.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" style="display:block" aria-hidden="true"><g><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/><path fill="currentColor" d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></g></svg>';
+
 		var rows = [
 			[ _('服务状态'), statusBadge(status.running) ],
 			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
@@ -1116,7 +1119,7 @@ return view.extend({
 				'style': 'background:none; border:none; box-shadow:none; padding:2px 6px; margin:0; cursor:pointer; color:inherit; font:inherit; vertical-align:middle;',
 				'disabled': this.checkingVersions ? true : null,
 				'click': ui.createHandlerFn(this, this.checkVersionUpdates)
-			}, this.checkingVersions ? E('em', { 'class': 'spinning' }, '') : checkIcon), ' ', E('button', {
+			}, this.checkingVersions ? busyIcon : checkIcon), ' ', E('button', {
 				'class': 'btn cbi-button cbi-button-action',
 				'disabled': (plugin && plugin.ok !== false && !plugin.has_update) ? true : null,
 				'click': ui.createHandlerFn(this, function() {
