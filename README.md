@@ -23,17 +23,21 @@
 </p>
 
 <p align="center">
-  <a href="#overview">Overview</a> ·
+  <a href="#installation">Installation</a> ·
   <a href="#features">Features</a> ·
 </p>
 
 ---
 
-## Overview
+## Installation
 
-```text
-LuCI → Services → VoHive
+One-line install on the router (fetches the latest release package; stops the VoHive service first if it is running, removes the old package if present, and restores the service state afterwards):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/voorz/luci-app-vohive/main/install.sh | sh
 ```
+
+Pin a version with `VERSION=0.1.47` in the environment. Manual packages are on the [Releases](https://github.com/voorz/luci-app-vohive/releases) page.
 
 ---
 
@@ -49,18 +53,6 @@ LuCI → Services → VoHive
 | **Plugin self-update** | Supports OpenWrt 24 (`opkg` / `.ipk`) and 25 (`apk` / `.apk`)                      |
 
 Roll-back keeps only the previous version and arch metadata; the old core is re-downloaded on roll-back, so **a second full binary is never stored permanently in flash**.
-
----
-
-## Installation
-
-One-line install on the router (fetches the latest release package; stops the VoHive service first if it is running, removes the old package if present, and restores the service state afterwards):
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/voorz/luci-app-vohive/main/install.sh | sh
-```
-
-Pin a version with `VERSION=0.1.46` in the environment. Manual packages are on the [Releases](https://github.com/voorz/luci-app-vohive/releases) page.
 
 ---
 
