@@ -991,7 +991,7 @@ return view.extend({
 
 		return E('table', { 'class': 'table' }, [
 			row(_('监听端口'), E('input', {
-				'type': 'number', 'min': '1', 'max': '65535', 'style': 'width:120px; max-width:100%; box-sizing:border-box;',
+				'type': 'number', 'min': '1', 'max': '65535', 'style': inputStyle,
 				'data-opt': 'port', 'value': uci.get('vohive', 'main', 'port') || '7575'
 			})),
 			row(_('Web 用户名'), E('input', {
