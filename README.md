@@ -53,12 +53,8 @@ Roll-back keeps only the previous version and arch metadata; the old core is re-
 
 ---
 
-## Installation
-Download the matching package from [Releases](https://github.com/voorz/luci-app-vohive/releases):
-
 ## Related Links
 
-- [VoHive core project](https://github.com/voorz/vohive-next)
 - [This plugin's Releases](https://github.com/voorz/luci-app-vohive/releases)
 - [OpenWrt docs](https://openwrt.org/docs/start)
 - [LuCI project](https://github.com/openwrt/luci)
