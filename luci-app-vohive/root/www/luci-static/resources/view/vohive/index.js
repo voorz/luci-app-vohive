@@ -989,20 +989,19 @@ return view.extend({
 				webBtn.setAttribute('data-url', href);
 				return;
 			}
-			var applyBtn = root.querySelector('[id$="._apply_config"]');
+			var applyBtn = root.querySelector('button[id$="._apply_config"], input[id$="._apply_config"]');
 			if (!applyBtn)
 				return;
 			webBtn = E('button', {
 				'type': 'button',
-				'class': (applyBtn.getAttribute('class') || 'btn cbi-button cbi-button-apply') + ' vohive-webui-btn',
+				'class': 'btn cbi-button cbi-button-apply vohive-webui-btn',
 				'data-url': href,
 				'click': function(ev) {
 					window.open(ev.currentTarget.getAttribute('data-url'), '_blank');
 				},
-				'style': 'display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; margin-left:.5em; vertical-align:middle;'
+				'style': 'margin-left:.5em;'
 			}, _('打开 VoHive Web UI'));
 			applyBtn.parentNode.insertBefore(webBtn, applyBtn.nextSibling);
-			webBtn.style.height = applyBtn.offsetHeight + 'px';
 		} else if (webBtn) {
 			webBtn.remove();
 		}
@@ -1097,6 +1096,9 @@ return view.extend({
 			pluginLatest = _('未知');
 		}
 
+		var checkIcon = E('span', { 'style': 'display:inline-block; width:15px; height:15px; vertical-align:-2px;' });
+		checkIcon.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" style="display:block" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>';
+
 		var rows = [
 			[ _('服务状态'), statusBadge(status.running) ],
 			[ _('核心版本'), E('span', {}, [ coreVersion, ' ', E('span', { 'style': 'color:var(--text-color-medium);' }, _('最新: ')), coreLatest ]) ],
@@ -1106,16 +1108,7 @@ return view.extend({
 				'style': 'background:none; border:none; box-shadow:none; padding:2px 6px; margin:0; cursor:pointer; color:inherit; font:inherit; vertical-align:middle;',
 				'disabled': this.checkingVersions ? true : null,
 				'click': ui.createHandlerFn(this, this.checkVersionUpdates)
-			}, this.checkingVersions ? E('em', { 'class': 'spinning' }, '') : E('svg', {
-				'viewBox': '0 0 24 24',
-				'width': '15',
-				'height': '15',
-				'style': 'display:block;',
-				'aria-hidden': 'true'
-			}, E('path', {
-				'fill': 'currentColor',
-				'd': 'M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'
-			}))), ' ', E('button', {
+			}, this.checkingVersions ? E('em', { 'class': 'spinning' }, '') : checkIcon), ' ', E('button', {
 				'class': 'btn cbi-button cbi-button-action',
 				'disabled': (plugin && plugin.ok !== false && !plugin.has_update) ? true : null,
 				'click': ui.createHandlerFn(this, function() {
