@@ -16,6 +16,7 @@
 		"uci": [ "vohive", "network", "firewall" ],
 		"file": {
 			"/usr/share/vohive/apply_config.sh": [ "exec" ],
+			"/usr/share/vohive/service.sh": [ "exec" ],
 			"/usr/share/vohive/network_setup.sh": [ "exec" ],
 				"/usr/share/vohive/install_core.sh": [ "exec" ],
 				"/usr/share/vohive/install_deps.sh": [ "exec" ],
