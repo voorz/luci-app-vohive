@@ -987,13 +987,12 @@ return view.extend({
 		o.default = '7575';
 		o.datatype = 'port';
 
-		o = s.option(form.Value, 'username', _('Web 用户名'));
+		o = s.option(form.Value, 'username', _('登录凭据'));
 		o.default = 'admin';
 		o.rmempty = false;
 
-		o = s.option(form.Value, 'password', _('Web 密码'));
+		o = s.option(form.Value, 'password', '');
 		o.default = 'admin';
-		o.password = true;
 		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'log_level', _('日志级别'));
@@ -1021,9 +1020,6 @@ return view.extend({
 		return m.render().then(function(node) {
 			node.querySelectorAll('input[id$=".username"]').forEach(function(input) {
 				input.setAttribute('autocomplete', 'off');
-			});
-			node.querySelectorAll('input[id$=".password"]').forEach(function(input) {
-				input.setAttribute('autocomplete', 'new-password');
 			});
 			return node;
 		});
