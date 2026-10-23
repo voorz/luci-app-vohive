@@ -606,6 +606,7 @@ return view.extend({
 		this.releasesData = releases;
 		this.pluginData = plugin;
 
+		this.configNode = configNode;
 		this.coreSectionNode = E('div', {});
 
 		return this.renderCoreManagement(status, releases).then(function(coreEl) {
@@ -973,7 +974,36 @@ return view.extend({
 	/* 基础配置 / 日志                                            */
 	/* ---------------------------------------------------------- */
 
+	syncWebUiButton: function(status, rootNode) {
+		var root = rootNode || this.configNode;
+		if (!root || !status)
+			return;
+
+		var webBtn = root.querySelector('a.vohive-webui-btn');
+		if (status.running) {
+			var href = 'http://%s:%s'.format(window.location.hostname, status.port || '7575');
+			if (webBtn) {
+				webBtn.setAttribute('href', href);
+				return;
+			}
+			var applyBtn = root.querySelector('[id$="._apply_config"]');
+			if (!applyBtn)
+				return;
+			webBtn = E('a', {
+				'class': (applyBtn.getAttribute('class') || 'btn cbi-button cbi-button-apply') + ' vohive-webui-btn',
+				'target': '_blank',
+				'href': href,
+				'style': 'display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; margin-left:.5em; vertical-align:middle; text-decoration:none;'
+			}, _('打开 VoHive Web UI'));
+			applyBtn.parentNode.insertBefore(webBtn, applyBtn.nextSibling);
+			webBtn.style.height = applyBtn.offsetHeight + 'px';
+		} else if (webBtn) {
+			webBtn.remove();
+		}
+	},
+
 	renderConfigMap: function(status) {
+		var self = this;
 		var m = new form.Map('vohive');
 		var s, o;
 
@@ -1021,19 +1051,7 @@ return view.extend({
 			node.querySelectorAll('input[id$=".username"]').forEach(function(input) {
 				input.setAttribute('autocomplete', 'off');
 			});
-			if (status && status.running) {
-				var applyBtn = node.querySelector('[id$="._apply_config"]');
-				if (applyBtn) {
-					var webBtn = E('a', {
-						'class': applyBtn.getAttribute('class') || 'btn cbi-button cbi-button-apply',
-						'target': '_blank',
-						'href': 'http://%s:%s'.format(window.location.hostname, status.port || '7575'),
-						'style': 'display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; margin-left:.5em; vertical-align:middle; text-decoration:none;'
-					}, _('打开 VoHive Web UI'));
-					applyBtn.parentNode.insertBefore(webBtn, applyBtn.nextSibling);
-					webBtn.style.height = applyBtn.offsetHeight + 'px';
-				}
-			}
+			self.syncWebUiButton(status, node);
 			return node;
 		});
 	},
@@ -1130,6 +1148,7 @@ updateStatusNode: function(status) {
 		return;
 
 	dom.content(this.statusNode, this.renderStatus(status, this.releasesData, this.pluginData));
+	this.syncWebUiButton(status);
 },
 
 	refreshStatus: function() {
