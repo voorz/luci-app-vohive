@@ -987,11 +987,11 @@ return view.extend({
 		o.default = '7575';
 		o.datatype = 'port';
 
-		o = s.option(form.Value, 'username', _('登录凭据'));
+		o = s.option(form.Value, 'username', _('Web 用户名'));
 		o.default = 'admin';
 		o.rmempty = false;
 
-		o = s.option(form.Value, 'password', '');
+		o = s.option(form.Value, 'password', _('登录凭据'));
 		o.default = 'admin';
 		o.rmempty = false;
 
