@@ -1010,7 +1010,8 @@ return view.extend({
 			return /^\/.+/.test(value) || _('必须是绝对路径');
 		};
 
-		o = s.option(form.Button, '_apply_config', _('保存并应用'));
+		o = s.option(form.Button, '_apply_config', _('配置更新'));
+		o.inputtitle = _('重载');
 		o.inputstyle = 'apply';
 		o.onclick = ui.createHandlerFn(this, function() {
 			return saveApplyThen(m, function() {
