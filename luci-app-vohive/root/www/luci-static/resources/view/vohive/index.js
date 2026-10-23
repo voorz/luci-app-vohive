@@ -653,11 +653,14 @@ return view.extend({
 		o.readonly = !repoOk;
 
 		o = s.option(form.ListValue, 'version', _('指定版本'));
-		o.value('latest', releases.loading ? _('最新版本（正在加载...）') : (releases.latest ? _('最新版本') + ' (' + releases.latest + ')' : _('最新版本')));
 		(releases.versions || []).forEach(function(version) {
 			o.value(version, version);
 		});
-		o.default = 'latest';
+		o.default = (releases.versions || [])[0];
+		o.cfgvalue = function(section_id) {
+			var value = uci.get('vohive', section_id, 'version');
+			return (value && (releases.versions || []).indexOf(value) >= 0) ? value : (releases.versions || [])[0];
+		};
 		o.readonly = !repoOk;
 
 		o = s.option(form.Button, '_install_core', _('在线安装'));
