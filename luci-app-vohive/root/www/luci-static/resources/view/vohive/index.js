@@ -631,6 +631,7 @@ return view.extend({
 		s.addremove = false;
 
 		o = s.option(form.Value, 'release_repo', _('Release 仓库地址'));
+		o.rmempty = false;
 		o.default = DEFAULT_CORE_REPO;
 		o.validate = function(section_id, value) {
 			return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(releaseRepoSlug(value)) || _('必须是 GitHub 仓库地址');
@@ -646,6 +647,7 @@ return view.extend({
 		};
 
 		o = s.option(form.ListValue, 'core_arch', _('核心架构'));
+		o.rmempty = false;
 		o.value('arm64', 'linux_arm64');
 		o.value('amd64', 'linux_amd64');
 		o.value('armv7', 'linux_armv7');
@@ -657,6 +659,7 @@ return view.extend({
 		o.readonly = !repoOk;
 
 		o = s.option(form.ListValue, 'version', _('指定版本'));
+		o.rmempty = false;
 		(releases.versions || []).forEach(function(version) {
 			o.value(version, version);
 		});
@@ -1016,9 +1019,11 @@ return view.extend({
 		s.addremove = false;
 
 		o = s.option(form.Flag, 'enabled', _('启用服务'));
+		o.rmempty = false;
 		o.default = '0';
 
 		o = s.option(form.Value, 'port', _('监听端口'));
+		o.rmempty = false;
 		o.default = '7575';
 		o.datatype = 'port';
 
@@ -1031,6 +1036,7 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'log_level', _('日志级别'));
+		o.rmempty = false;
 		o.value('debug', 'debug');
 		o.value('info', 'info');
 		o.value('warn', 'warn');
@@ -1038,6 +1044,7 @@ return view.extend({
 		o.default = 'debug';
 
 		o = s.option(form.Value, 'data_path', _('数据目录'));
+		o.rmempty = false;
 		o.default = '/etc/vohive/data';
 		o.validate = function(section_id, value) {
 			return /^\/.+/.test(value) || _('必须是绝对路径');
