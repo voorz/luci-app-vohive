@@ -983,7 +983,7 @@ return view.extend({
 	/* ---------------------------------------------------------- */
 
 	renderConfigFields: function() {
-		var inputStyle = 'width:300px; max-width:100%; box-sizing:border-box;';
+		var inputStyle = 'width:120px; max-width:100%; box-sizing:border-box;';
 		var row = function(label, input) {
 			return E('tr', {}, [ E('td', { 'style': 'width:30%;' }, label), E('td', {}, input) ]);
 		};
