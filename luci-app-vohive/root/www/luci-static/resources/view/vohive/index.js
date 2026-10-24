@@ -229,6 +229,7 @@ return view.extend({
 	currentLogs: '',
 	statusNode: null,
 	coreSectionNode: null,
+	settingsSectionNode: null,
 	pluginSectionNode: null,
 	releasesData: null,
 	taskTimer: null,
@@ -602,6 +603,14 @@ return view.extend({
 		});
 	},
 
+	refreshSettingsSection: function() {
+		if (!this.settingsSectionNode)
+			return Promise.resolve();
+
+		dom.content(this.settingsSectionNode, this.renderRepoSettings(this.lastStatus || {}, this.releasesData || {}));
+		return Promise.resolve();
+	},
+
 	refreshPluginSection: function() {
 		if (!this.pluginSectionNode)
 			return Promise.resolve();
@@ -631,7 +640,8 @@ return view.extend({
 		}).then(function(fresh) {
 			return Promise.all([
 				self.refreshCoreSection(fresh || {}),
-				self.refreshPluginSection()
+				self.refreshPluginSection(),
+				self.refreshSettingsSection()
 			]);
 		}).catch(function() {
 			self.checkingVersions = false;
@@ -751,6 +761,18 @@ return view.extend({
 	buildCoreSection: function(status, releases, data) {
 		var self = this;
 		var instances = data.instances || [];
+
+		var cards = instances.map(function(inst) { return self.instanceCard(inst, status); });
+		cards.push(self.newInstanceCard(instances.length === 0));
+
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('核心管理')),
+			E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:1em;' }, cards)
+		]);
+	},
+
+	renderRepoSettings: function(status, releases) {
+		var self = this;
 		var repoOk = releases.ok !== false && releases.latest;
 		var repo = releaseRepoSlug(uci.get('vohive', 'main', 'release_repo'));
 
@@ -803,14 +825,6 @@ return view.extend({
 			}, _('保存设置'))
 		]);
 
-		var cards = instances.map(function(inst) { return self.instanceCard(inst, status); });
-		cards.push(self.newInstanceCard(instances.length === 0));
-
-		/* Same card treatment as the instance cards below, so the
-		   settings region and the instance region sit at the exact
-		   same inset from the section frame (section padding + one
-		   card padding) instead of the instances stacking two layers
-		   against the settings' one. */
 		var settingsCard = E('div', {
 			'style': [
 				'border:1px solid var(--border-color-medium)',
@@ -821,11 +835,7 @@ return view.extend({
 			].join(';')
 		}, [ settingsTable, settingsRow ]);
 
-		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('核心管理')),
-			settingsCard,
-			E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:1em;' }, cards)
-		]);
+		return settingsCard;
 	},
 
 	instanceCard: function(inst, status) {
@@ -1566,9 +1576,17 @@ updateStatusNode: function(status) {
 				self.networkPane = networkPane;
 
 				self.pluginSectionNode = E('div', {}, self.renderPluginManagement(plugin));
+				self.settingsSectionNode = E('div', {}, self.renderRepoSettings(status, releases));
 
 				var networkTab = E('div', { 'data-tab': 'network', 'data-tab-title': _('集成') }, [
-					networkPane,
+					networkPane
+				]);
+
+				var settingsTab = E('div', { 'data-tab': 'settings', 'data-tab-title': _('设置') }, [
+					E('div', { 'class': 'cbi-section' }, [
+						E('h3', { 'style': 'margin-bottom:.75em;' }, _('设置')),
+						self.settingsSectionNode
+					]),
 					self.pluginSectionNode
 				]);
 				networkTab.addEventListener('cbi-tab-active', function() {
@@ -1579,6 +1597,7 @@ updateStatusNode: function(status) {
 					E('div', { 'data-tab': 'overview', 'data-tab-title': _('概览') }, overviewEl),
 					E('div', { 'data-tab': 'core', 'data-tab-title': _('核心管理') }, self.coreSectionNode),
 					networkTab,
+					settingsTab,
 					E('div', { 'data-tab': 'logs', 'data-tab-title': _('日志') }, self.renderLogs(logs))
 				]);
 				var tabs = E('div', {}, panes);
