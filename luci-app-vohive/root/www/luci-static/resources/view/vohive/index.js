@@ -764,6 +764,7 @@ return view.extend({
 
 	buildCoreSection: function(status, releases, data) {
 		var self = this;
+		this.instancesData = data;
 		var instances = data.instances || [];
 
 		var cards = instances.map(function(inst) { return self.instanceCard(inst, status); });
@@ -783,6 +784,170 @@ return view.extend({
 				'从在线仓库下载或本地上传，创建新的核心实例；多个实例共存，同一时间只运行一个，可随时切换。'
 			))
 		]);
+	},
+
+	renderRepoSettings: function(status, releases) {
+		var m = new form.Map('vohive');
+		var s, o;
+		var repoOk = releases.ok !== false && releases.latest;
+
+		s = m.section(form.NamedSection, 'main', 'vohive', _('核心仓库配置：替换任何vohive核心仓库地址以接入在线安装与更新(可选)'));
+		s.addremove = false;
+
+		o = s.option(form.Value, 'release_repo', _('Release 仓库地址'));
+		o.rmempty = false;
+		o.default = DEFAULT_CORE_REPO;
+		o.validate = function(section_id, value) {
+			return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(releaseRepoSlug(value)) || _('必须是 GitHub 仓库地址');
+		};
+
+		o = s.option(form.DummyValue, '_repo_status', _('仓库状态'));
+		o.rawhtml = true;
+		o.cfgvalue = function(section_id) {
+			var color = repoOk ? '#37a24d' : '#d9534f';
+			var text = repoOk ? _('可用') : _('不可用或无 Release');
+			var repo = releaseRepoSlug(uci.get('vohive', section_id, 'release_repo'));
+			return '<span style="color:%s; font-weight:700;">●</span> <span style="color:%s;">%s</span> <a href="https://github.com/%s/releases" target="_blank" rel="noreferrer" style="margin-left:1em;">前往核心发布页↗</a>'.format(color, color, text, repo);
+		};
+
+		o = s.option(form.ListValue, 'core_arch', _('核心架构'));
+		o.rmempty = false;
+		o.value('arm64', 'linux_arm64');
+		o.value('amd64', 'linux_amd64');
+		o.value('armv7', 'linux_armv7');
+		o.default = status.core_arch_effective || 'arm64';
+		o.cfgvalue = function(section_id) {
+			var value = uci.get('vohive', section_id, 'core_arch');
+			return value || status.core_arch_effective || 'arm64';
+		};
+		o.readonly = !repoOk;
+
+		return m.render().then(function(node) {
+			node.querySelectorAll('input[id$=".release_repo"]').forEach(function(input) {
+				input.setAttribute('autocomplete', 'url');
+			});
+			return node;
+		});
+	},
+
+	instanceCard: function(inst, status) {
+		var self = this;
+		var isActive = !!inst.active;
+		var isRunning = isActive && !!status.running;
+
+		var stateNode;
+		if (isRunning)
+			stateNode = E('span', {}, [ E('span', { 'style': 'color:#37a24d; font-weight:700;' }, '● '), E('span', { 'style': 'color:#37a24d;' }, _('运行中')) ]);
+		else if (isActive)
+			stateNode = E('span', {}, [ E('span', { 'style': 'color:#09c; font-weight:700;' }, '● '), E('span', {}, _('当前核心（未运行）')) ]);
+		else
+			stateNode = E('span', {}, [ E('span', { 'style': 'color:#999; font-weight:700;' }, '● '), E('span', { 'style': 'color:#999;' }, _('未启用')) ]);
+
+		var created = inst.created ? new Date(parseInt(inst.created) * 1000).toLocaleString() : '—';
+		var infoRows = [
+			[ _('版本'), inst.version || '—' ],
+			[ _('来源'), inst.source == 'repo' ? _('在线仓库') : _('本地上传') ],
+			[ _('大小'), formatBytes(inst.size) ],
+			[ _('创建时间'), created ]
+		].map(function(row) {
+			return E('tr', {}, [
+				E('td', { 'style': 'width:30%;' }, row[0]),
+				E('td', {}, row[1])
+			]);
+		});
+
+		var buttons = [];
+		if (!isActive) {
+			buttons.push(E('button', {
+				'class': 'btn cbi-button cbi-button-apply',
+				'click': function() { return self.switchInstance(inst, status); }
+			}, _('切换')));
+		}
+		buttons.push(E('button', {
+			'class': 'btn cbi-button',
+			'click': function() { return self.showReplaceInstanceDialog(inst); }
+		}, _('替换')));
+		if (!isActive) {
+			buttons.push(E('button', {
+				'class': 'btn cbi-button cbi-button-reset',
+				'click': function() { return self.removeInstance(inst); }
+			}, _('删除')));
+		}
+
+		return E('div', {
+			'style': [
+				'flex:1 1 300px',
+				'max-width:420px',
+				'border:1px solid var(--border-color-medium)',
+				'border-radius:6px',
+				'padding:1em',
+				'box-sizing:border-box'
+			].join(';')
+		}, [
+			E('div', { 'style': 'display:flex; align-items:center; justify-content:space-between; gap:1em; margin-bottom:.75em;' }, [
+				E('strong', { 'style': 'font-size:1.05em;' }, inst.name),
+				stateNode
+			]),
+			E('table', { 'class': 'table', 'style': 'margin-bottom:1em;' }, infoRows),
+			E('div', { 'style': 'display:flex; gap:.5em; flex-wrap:wrap;' }, buttons)
+		]);
+	},
+
+	switchInstance: function(inst, status) {
+		var self = this;
+		var message = status.running
+			? _('将停止当前运行的核心，并切换到「%s」启动。切换失败时会自动回滚。').format(inst.name)
+			: _('将当前核心切换为「%s」（服务未运行，下次启动时生效）。').format(inst.name);
+		return confirmModal(_('切换核心'), message).then(function(confirmed) {
+			if (!confirmed)
+				return;
+			return fs.exec_direct('/usr/share/vohive/instance_switch.sh', [ inst.id ]).then(function(text) {
+				notifyResult(text);
+				return self.refreshStatus();
+			}).then(function(fresh) {
+				return self.refreshCoreSection(fresh || {});
+			}).catch(function(e) {
+				ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
+			});
+		});
+	},
+
+	removeInstance: function(inst) {
+		var self = this;
+		return confirmModal(_('删除核心'), _('确定删除核心实例「%s」？此操作不可恢复。').format(inst.name)).then(function(confirmed) {
+			if (!confirmed)
+				return;
+
+			/* Optimistic: drop the card from the cached list at once so
+			   the UI never sits frozen; the refresh below reconciles
+			   with the backend either way. */
+			if (self.instancesData && self.instancesData.instances) {
+				var remaining = self.instancesData.instances.filter(function(i) { return i.id !== inst.id; });
+				dom.content(self.coreSectionNode, self.buildCoreSection(self.lastStatus || {}, self.releasesData || {}, {
+					instances: remaining,
+					active: self.instancesData.active
+				}));
+			}
+
+			var rollback = function() {
+				return self.refreshStatus().then(function(fresh) {
+					return self.refreshCoreSection(fresh || {});
+				});
+			};
+
+			return fs.exec_direct('/usr/share/vohive/instance_remove.sh', [ inst.id ]).then(function(text) {
+				var result = parseJson(text);
+				if (result.ok === false) {
+					notifyResult(text);
+					return rollback();
+				}
+				notifyResult(text);
+				return rollback();
+			}).catch(function(e) {
+				ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
+				return rollback();
+			});
+		});
 	},
 
 	renderRepoSettings: function(status, releases) {
