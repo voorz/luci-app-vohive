@@ -772,7 +772,7 @@ return view.extend({
 		return E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('实例管理')),
 			instances.length
-				? E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:1em;' }, cards)
+				? E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:1em; margin:0; padding:0;' }, cards)
 				: E('p', { 'style': 'color:var(--text-color-medium);' }, _('尚未创建任何核心实例。')),
 			E('div', { 'style': 'display:flex; gap:.5em; flex-wrap:wrap; margin-top:.75em;' }, [
 				E('button', {
@@ -881,6 +881,7 @@ return view.extend({
 				'border:1px solid var(--border-color-medium)',
 				'border-radius:6px',
 				'padding:1em',
+				'margin:0',
 				'box-sizing:border-box'
 			].join(';')
 		}, [
