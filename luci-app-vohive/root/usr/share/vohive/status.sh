@@ -2,8 +2,8 @@
 
 . /usr/share/vohive/lib.sh
 
-BIN="/etc/vohive/bin/vohive"
-VERSION_FILE="/etc/vohive/bin/version"
+BIN="$(core_bin_path)"
+VERSION_FILE="$(core_version_file)"
 ARCH_FILE="/etc/vohive/bin/arch"
 METRICS_STATE="/tmp/vohive/status.metrics"
 
@@ -48,13 +48,17 @@ total_jiffies() {
 }
 
 vohive_pids() {
-	local pid cmd
+	local pid cmd bin
 
 	for pid in /proc/[0-9]*; do
 		pid="${pid#/proc/}"
 		cmd="$({ tr '\0' ' ' < "/proc/$pid/cmdline"; } 2>/dev/null || true)"
-		case "$cmd" in
-			*"/etc/vohive/bin/vohive"*) printf '%s\n' "$pid" ;;
+		# First cmdline token is the binary itself: match legacy
+		# /etc/vohive/bin/vohive and instance binaries alike, but not
+		# helper scripts under /usr/share/vohive/.
+		bin="${cmd%% *}"
+		case "$bin" in
+			*/vohive) printf '%s\n' "$pid" ;;
 		esac
 	done
 }

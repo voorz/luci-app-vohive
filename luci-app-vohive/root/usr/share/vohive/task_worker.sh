@@ -8,8 +8,10 @@ id="${1:-}"
 type="${2:-}"
 shift 2 || true
 
-# 确保任何异常退出都将状态标记为 failed
-trap 'rc=$?; [ "$rc" -ne 0 ] && task_fail "$id" "$type" "任务执行异常退出（退出码 $rc）" 2>/dev/null || true' EXIT
+# 确保任何异常退出都将状态标记为 failed；但如果任务已经由
+# task_fail/task_finish 明确写过 failed/completed，就不要用通用
+# 消息覆盖掉具体的失败原因。
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then cur_state="$(jsonfilter -i "$(task_status_file "$id")" -e "@.state" 2>/dev/null || true)"; case "$cur_state" in failed|completed) ;; *) task_fail "$id" "$type" "任务执行异常退出（退出码 $rc）" 2>/dev/null || true ;; esac; fi' EXIT
 
 BIN_DIR="/etc/vohive/bin"
 BIN="$BIN_DIR/vohive"
@@ -244,6 +246,166 @@ upload_core() {
 	finish_ok "已安装 VoHive 核心（$version）"
 }
 
+install_instance_binary() {
+	# $1 = target dir, $2 = mode (repo|upload), $3 = version (repo mode)
+	# Prints resolved version on stdout. Dies via fail() on error.
+	local dir="$1" mode="$2" version="$3"
+	local repo release_json tag asset asset_arch url downloaded total
+
+	if [ "$mode" = "repo" ]; then
+		repo="$(github_repo_slug "$(uci_get release_repo "$DEFAULT_CORE_REPO")")"
+		validate_github_repo "$repo" || fail "Invalid GitHub repository: $repo"
+		[ -n "$version" ] || version="latest"
+		uci set vohive.main.release_repo="https://github.com/$repo" 2>/dev/null || true
+		uci commit vohive 2>/dev/null || true
+		asset_arch="$(resolve_asset_arch "$(uci_get core_arch '')")" || fail "Unsupported configured architecture"
+		task_log "$id" "查询 VoHive Release"
+		task_write_status "$id" "$type" "running" "prepare" "正在查询 VoHive Release" "" 0 0 0 0
+		release_json="$(release_json_for_version "$repo" "$version")" || fail "Failed to query release"
+		tag="$(printf '%s' "$release_json" | jsonfilter -e '@.tag_name' 2>/dev/null || true)"
+		[ -n "$tag" ] || fail "Failed to parse release"
+		asset="vohive_${tag}_linux_${asset_arch}"
+		url="https://github.com/$repo/releases/download/$tag/$asset"
+		downloaded="$DOWNLOAD_DIR/$asset"
+		total="$(task_asset_size "$release_json" "$asset")"
+		mkdir -p "$DOWNLOAD_DIR"
+		rm -f "$downloaded"
+		task_download "$id" "$type" "$url" "$downloaded" "$asset" "$total"
+		[ -s "$downloaded" ] || fail "Downloaded file is empty"
+		chmod +x "$downloaded"
+		if command -v file >/dev/null 2>&1; then
+			file "$downloaded" | grep -Eq 'ELF|executable' || {
+				rm -f "$downloaded"
+				fail "Downloaded file is not an executable"
+			}
+		fi
+		cp -f "$downloaded" "$dir/vohive"
+		chmod 0755 "$dir/vohive"
+		printf '%s\n' "$asset_arch" > "$dir/arch"
+		rm -f "$downloaded"
+		printf '%s' "$tag"
+		return 0
+	fi
+
+	if [ "$mode" = "upload" ]; then
+		[ -s "$DOWNLOAD_DIR/vohive-core-upload" ] || fail "上传文件不存在或为空"
+		chmod +x "$DOWNLOAD_DIR/vohive-core-upload"
+		if command -v file >/dev/null 2>&1; then
+			file "$DOWNLOAD_DIR/vohive-core-upload" | grep -Eq 'ELF|executable' || {
+				rm -f "$DOWNLOAD_DIR/vohive-core-upload"
+				fail "上传文件不是有效的可执行文件"
+			}
+		fi
+		cp -f "$DOWNLOAD_DIR/vohive-core-upload" "$dir/vohive"
+		chmod 0755 "$dir/vohive"
+		asset_arch="$(resolve_asset_arch "$(uci_get core_arch '')" 2>/dev/null || true)"
+		printf '%s\n' "${asset_arch:-unknown}" > "$dir/arch"
+		rm -f "$DOWNLOAD_DIR/vohive-core-upload"
+		printf '%s' "--"
+		return 0
+	fi
+
+	fail "不支持的实例来源: $mode"
+}
+
+instance_add() {
+	local name="$1" mode="$2" version="${3:-}"
+	local inst_id dir resolved
+
+	[ -n "$name" ] || fail "实例名字不能为空"
+	[ "$mode" = "repo" ] || [ "$mode" = "upload" ] || fail "不支持的实例来源: $mode"
+
+	migrate_legacy_instance 2>/dev/null || true
+	mkdir -p "$INSTANCES_DIR"
+	inst_id="inst-$(date +%s)"
+	[ -e "$(instance_dir "$inst_id")" ] && inst_id="inst-$(date +%s)-$$"
+	dir="$(instance_dir "$inst_id")"
+	mkdir -p "$dir" || fail "无法创建实例目录"
+
+	task_log "$id" "正在创建核心实例"
+	task_write_status "$id" "$type" "running" "install" "正在创建核心实例" "" 0 0 0 0
+	resolved="$(install_instance_binary "$dir" "$mode" "$version")"
+	printf '%s\n' "$resolved" > "$dir/version"
+	{
+		printf 'name=%s\n' "$name"
+		printf 'source=%s\n' "$mode"
+		printf 'created=%s\n' "$(date +%s)"
+	} > "$dir/meta"
+
+	finish_ok "已创建核心实例 $name"
+}
+
+instance_replace() {
+	local inst_id="$1" mode="$2" version="${3:-}"
+	local dir resolved was_running active
+
+	[ "$mode" = "repo" ] || [ "$mode" = "upload" ] || fail "不支持的实例来源: $mode"
+	instance_id_valid "$inst_id" || fail "无效的实例 id"
+	dir="$(instance_dir "$inst_id")"
+	[ -x "$dir/vohive" ] || fail "实例不存在"
+
+	migrate_legacy_instance 2>/dev/null || true
+	active="$(active_instance_id)"
+	was_running=0
+	if [ "$inst_id" = "$active" ]; then
+		/etc/init.d/vohive running >/dev/null 2>&1 && was_running=1
+	fi
+
+	task_log "$id" "正在替换核心"
+	task_write_status "$id" "$type" "running" "install" "正在替换核心" "" 0 0 0 0
+	cp -f "$dir/vohive" "$dir/vohive.bak"
+	if [ "$was_running" = "1" ]; then
+		/etc/init.d/vohive stop || true
+	fi
+
+	resolved="$(install_instance_binary "$dir" "$mode" "$version")" || {
+		cp -f "$dir/vohive.bak" "$dir/vohive"
+		[ "$was_running" = "1" ] && /etc/init.d/vohive start >/tmp/vohive-start.log 2>&1 || true
+		fail "替换失败，已恢复原核心"
+	}
+	printf '%s\n' "$resolved" > "$dir/version"
+	# Read the old meta BEFORE truncating it with the redirect below.
+	old_name="$(instance_meta_get "$inst_id" name 2>/dev/null || echo "$inst_id")"
+	old_created="$(instance_meta_get "$inst_id" created 2>/dev/null || date +%s)"
+	{
+		printf 'name=%s\n' "$old_name"
+		printf 'source=%s\n' "$mode"
+		printf 'created=%s\n' "$old_created"
+	} > "$dir/meta"
+
+	if [ "$was_running" = "1" ]; then
+		task_write_status "$id" "$type" "running" "restart" "正在重启 VoHive 服务" "" 0 0 0 0
+		if ! /etc/init.d/vohive start >/tmp/vohive-start.log 2>&1; then
+			cp -f "$dir/vohive.bak" "$dir/vohive"
+			/etc/init.d/vohive start >/tmp/vohive-start.log 2>&1 || true
+			fail "替换后服务启动失败，已恢复原核心"
+		fi
+		sleep 2
+		if ! /etc/init.d/vohive running >/dev/null 2>&1; then
+			cp -f "$dir/vohive.bak" "$dir/vohive"
+			/etc/init.d/vohive start >/tmp/vohive-start.log 2>&1 || true
+			fail "替换后服务未能保持运行，已恢复原核心"
+		fi
+		if [ "$mode" = "upload" ]; then
+			sleep 3
+			api_port="$(uci_get port '7575')"
+			api_token="$(curl -s --connect-timeout 3 http://127.0.0.1:$api_port/api/auth/login \
+				-X POST -H 'Content-Type: application/json' \
+				-d '{"username":"'"$(uci_get username 'admin')"'","password":"'"$(uci_get password 'admin')"'"}' \
+				2>/dev/null | jsonfilter -e '@.token' 2>/dev/null || true)"
+			if [ -n "$api_token" ]; then
+				api_version="$(curl -s --connect-timeout 3 http://127.0.0.1:$api_port/api/system/info \
+					-H "Authorization: Bearer $api_token" \
+					2>/dev/null | jsonfilter -e '@.version' 2>/dev/null || true)"
+				[ -n "$api_version" ] && printf '%s\n' "$api_version" > "$dir/version"
+			fi
+		fi
+	fi
+
+	rm -f "$dir/vohive.bak"
+	finish_ok "核心已替换"
+}
+
 task_mkdirs
 task_log "$id" "任务启动"
 
@@ -251,5 +413,7 @@ case "$type" in
 	install_core) install_core "$@" ;;
 	upload_core) upload_core ;;
 	update_plugin) update_plugin ;;
+	instance_add) instance_add "$@" ;;
+	instance_replace) instance_replace "$@" ;;
 	*) fail "不支持的任务类型: $type" ;;
 esac

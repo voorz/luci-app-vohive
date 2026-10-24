@@ -5,6 +5,7 @@
 		"uci": [ "vohive", "network", "firewall" ],
 		"file": {
 			"/usr/share/vohive/status.sh": [ "exec" ],
+			"/usr/share/vohive/instances.sh": [ "exec" ],
 			"/usr/share/vohive/logs.sh": [ "exec" ],
 			"/usr/share/vohive/releases.sh": [ "exec" ],
 			"/usr/share/vohive/plugin_status.sh": [ "exec" ],
@@ -17,6 +18,8 @@
 		"file": {
 			"/usr/share/vohive/apply_config.sh": [ "exec" ],
 			"/usr/share/vohive/service.sh": [ "exec" ],
+			"/usr/share/vohive/instance_switch.sh": [ "exec" ],
+			"/usr/share/vohive/instance_remove.sh": [ "exec" ],
 			"/usr/share/vohive/network_setup.sh": [ "exec" ],
 				"/usr/share/vohive/install_core.sh": [ "exec" ],
 				"/usr/share/vohive/install_deps.sh": [ "exec" ],

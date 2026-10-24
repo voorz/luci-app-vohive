@@ -227,3 +227,100 @@ normalize_plugin_version() {
 	# apk versions may look like 0.1.39-r1 already handled by %-r*
 	printf '%s' "$version"
 }
+
+# ---- Multi-core instances ----
+# Layout on the router (shared config, one binary per instance):
+#   /etc/vohive/instances/<id>/vohive   instance binary
+#   /etc/vohive/instances/<id>/version  version string (may be "--")
+#   /etc/vohive/instances/<id>/arch     asset arch (may be "unknown")
+#   /etc/vohive/instances/<id>/meta     key=value: name, source, created
+#   /etc/vohive/active                  active instance id (single line)
+# Legacy single-core layout (/etc/vohive/bin/vohive) is migrated lazily
+# into an instance named "default" on first use; all resolvers below
+# trigger that migration, so callers never see the legacy path.
+
+INSTANCES_DIR="/etc/vohive/instances"
+ACTIVE_FILE="/etc/vohive/active"
+LEGACY_BIN_DIR="/etc/vohive/bin"
+LEGACY_BIN="$LEGACY_BIN_DIR/vohive"
+
+instance_id_valid() {
+	printf '%s' "$1" | grep -Eq '^[A-Za-z0-9_-]+$'
+}
+
+instance_dir() {
+	printf '%s/%s' "$INSTANCES_DIR" "$1"
+}
+
+instance_meta_get() {
+	local id="$1" key="$2" file value
+
+	file="$(instance_dir "$id")/meta"
+	[ -f "$file" ] || return 1
+	value="$(awk -F= -v k="$key" '$1 == k { sub($1 "=", ""); print; exit }' "$file" 2>/dev/null || true)"
+	[ -n "$value" ] || return 1
+	printf '%s' "$value"
+}
+
+migrate_legacy_instance() {
+	local id dir
+
+	# Already migrated: instances exist and an active pointer is set.
+	if [ -s "$ACTIVE_FILE" ] && [ -d "$INSTANCES_DIR" ]; then
+		return 0
+	fi
+
+	# No legacy binary: nothing to migrate (fresh install, or already
+	# migrated with a missing pointer — pick the first instance then).
+	if [ ! -x "$LEGACY_BIN" ]; then
+		if [ -d "$INSTANCES_DIR" ] && [ ! -s "$ACTIVE_FILE" ]; then
+			id="$(ls "$INSTANCES_DIR" 2>/dev/null | head -n 1 || true)"
+			[ -n "$id" ] && printf '%s\n' "$id" > "$ACTIVE_FILE"
+		fi
+		return 0
+	fi
+
+	mkdir -p "$INSTANCES_DIR" || return 1
+	id="default"
+	dir="$(instance_dir "$id")"
+	mkdir -p "$dir" || return 1
+	mv "$LEGACY_BIN" "$dir/vohive" || return 1
+	[ -f "$LEGACY_BIN_DIR/version" ] && mv "$LEGACY_BIN_DIR/version" "$dir/version"
+	[ -f "$LEGACY_BIN_DIR/arch" ] && mv "$LEGACY_BIN_DIR/arch" "$dir/arch"
+	[ -f "$dir/version" ] || printf '%s\n' "--" > "$dir/version"
+	[ -f "$dir/arch" ] || printf '%s\n' "unknown" > "$dir/arch"
+	{
+		printf 'name=%s\n' "默认核心"
+		printf 'source=%s\n' "local"
+		printf 'created=%s\n' "$(date +%s)"
+	} > "$dir/meta"
+	printf '%s\n' "$id" > "$ACTIVE_FILE"
+	return 0
+}
+
+active_instance_id() {
+	migrate_legacy_instance 2>/dev/null || true
+	[ -s "$ACTIVE_FILE" ] && cat "$ACTIVE_FILE" 2>/dev/null || true
+}
+
+core_bin_path() {
+	local id
+
+	id="$(active_instance_id)"
+	if [ -n "$id" ] && [ -x "$(instance_dir "$id")/vohive" ]; then
+		printf '%s/vohive' "$(instance_dir "$id")"
+		return 0
+	fi
+	printf '%s' "$LEGACY_BIN"
+}
+
+core_version_file() {
+	local id
+
+	id="$(active_instance_id)"
+	if [ -n "$id" ] && [ -d "$(instance_dir "$id")" ]; then
+		printf '%s/version' "$(instance_dir "$id")"
+		return 0
+	fi
+	printf '%s/version' "$LEGACY_BIN_DIR"
+}
