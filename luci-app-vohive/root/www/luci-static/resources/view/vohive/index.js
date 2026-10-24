@@ -765,11 +765,21 @@ return view.extend({
 		var instances = data.instances || [];
 
 		var cards = instances.map(function(inst) { return self.instanceCard(inst, status); });
-		cards.push(self.newInstanceCard(instances.length === 0));
 
 		return E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('实例管理')),
-			E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:1em;' }, cards)
+			instances.length
+				? E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:1em;' }, cards)
+				: E('p', { 'style': 'color:var(--text-color-medium);' }, _('尚未创建任何核心实例。')),
+			E('div', { 'style': 'display:flex; gap:.5em; flex-wrap:wrap; margin-top:.75em;' }, [
+				E('button', {
+					'class': 'btn cbi-button cbi-button-apply',
+					'click': function() { return self.showCreateInstanceDialog(); }
+				}, _('＋ 新建核心'))
+			]),
+			E('p', { 'style': 'margin-top:.75em; color:var(--text-color-medium); font-size:13px;' }, _(
+				'从在线仓库下载或本地上传，创建新的核心实例；多个实例共存，同一时间只运行一个，可随时切换。'
+			))
 		]);
 	},
 
@@ -878,34 +888,6 @@ return view.extend({
 			E('table', { 'class': 'table', 'style': 'margin-bottom:1em;' }, infoRows),
 			E('div', { 'style': 'display:flex; gap:.5em; flex-wrap:wrap;' }, buttons)
 		]);
-	},
-
-	newInstanceCard: function(empty) {
-		var self = this;
-		var children = [];
-		if (empty)
-			children.push(E('p', { 'style': 'color:var(--text-color-medium, #999); margin:0;' }, _('尚未创建任何核心实例')));
-		children.push(E('button', {
-			'class': 'btn cbi-button cbi-button-apply',
-			'click': function() { return self.showCreateInstanceDialog(); }
-		}, _('＋ 新建核心')));
-
-		return E('div', {
-			'style': [
-				'flex:1 1 300px',
-				'max-width:420px',
-				'border:1px dashed var(--border-color-medium)',
-				'border-radius:6px',
-				'padding:1em',
-				'box-sizing:border-box',
-				'display:flex',
-				'flex-direction:column',
-				'align-items:center',
-				'justify-content:center',
-				'gap:.75em',
-				'min-height:180px'
-			].join(';')
-		}, children);
 	},
 
 	switchInstance: function(inst, status) {
