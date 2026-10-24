@@ -190,6 +190,10 @@ function taskTitle(type) {
 		return _('上传安装 VoHive 核心');
 	case 'update_plugin':
 		return _('更新 LuCI 插件');
+	case 'instance_add':
+		return _('创建核心实例');
+	case 'instance_replace':
+		return _('替换核心');
 	default:
 		return _('更新任务');
 	}
@@ -323,62 +327,175 @@ return view.extend({
 			});
 	},
 
-	showUploadCoreDialog: function() {
+	showCreateInstanceDialog: function() {
 		var self = this;
+		var versions = (this.releasesData && this.releasesData.versions) || [];
+
+		var nameInput = E('input', {
+			'type': 'text',
+			'class': 'cbi-input-text',
+			'style': 'width:100%; box-sizing:border-box;',
+			'placeholder': _('例如：官方核心 / 某开发者适配版')
+		});
+		var sourceSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:100%; box-sizing:border-box;' }, [
+			E('option', { 'value': 'repo' }, _('在线仓库')),
+			E('option', { 'value': 'upload' }, _('本地上传'))
+		]);
+		var versionSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:100%; box-sizing:border-box;' },
+			versions.map(function(v) { return E('option', { 'value': v }, v); }));
+		var repoRow = E('div', { 'style': 'margin-bottom:1em;' }, [
+			E('p', { 'style': 'margin-bottom:.35em;' }, _('选择版本')),
+			versions.length ? versionSelect : E('p', { 'style': 'color:var(--text-color-medium, #999);' }, _('版本列表为空，请先在概览页点检查图标刷新。'))
+		]);
+
 		var fileInput = E('input', { 'type': 'file', 'style': 'display:none;' });
 		var fileName = E('span', { 'style': 'color:var(--text-color-medium, #999); margin-left:.5em;' }, _('未选择文件'));
-
-		var uploadBtn = E('button', {
-			'class': 'btn cbi-button-action',
-			'click': function() {
-				var file = fileInput.files[0];
-				if (!file) {
-					fileInput.click();
-					return;
-				}
-				if (file.size > 100 * 1024 * 1024) {
-					ui.addNotification(null, E('p', {}, _('文件大小超过 100 MB 限制')), 'danger');
-					return;
-				}
-				ui.hideModal();
-				self.uploadCoreFile(file);
-			}
-		}, _('上传并安装'));
-
 		fileInput.addEventListener('change', function() {
 			var file = fileInput.files[0];
-			if (file) {
-				fileName.textContent = '%s (%s)'.format(file.name, formatBytes(file.size));
-				fileName.style.color = 'var(--primary-color, #09c)';
-			} else {
-				fileName.textContent = _('未选择文件');
-				fileName.style.color = 'var(--text-color-medium, #999)';
-			}
+			fileName.textContent = file ? '%s (%s)'.format(file.name, formatBytes(file.size)) : _('未选择文件');
+		});
+		var uploadRow = E('div', { 'style': 'margin-bottom:1em; display:none;' }, [
+			E('p', { 'style': 'margin-bottom:.35em;' }, _('选择本地的 VoHive 核心二进制文件')),
+			E('button', {
+				'class': 'btn cbi-button',
+				'click': function() { fileInput.click(); }
+			}, _('选择文件')),
+			fileName
+		]);
+
+		sourceSelect.addEventListener('change', function() {
+			var repo = sourceSelect.value == 'repo';
+			repoRow.style.display = repo ? '' : 'none';
+			uploadRow.style.display = repo ? 'none' : '';
 		});
 
-		ui.showModal(_('本地安装'), [
+		ui.showModal(_('新建核心'), [
 			E('div', { 'style': 'width:100%; box-sizing:border-box;' }, [
-				E('p', { 'style': 'margin-bottom:1em;' }, _('选择本地的 VoHive 核心二进制文件进行上传安装。')),
-				E('div', { 'style': 'display:flex; align-items:center; gap:.5em; margin-bottom:1em;' }, [
-					E('button', {
-						'class': 'btn cbi-button',
-						'click': function() { fileInput.click(); }
-					}, _('选择文件')),
-					fileName
-				]),
+				E('p', { 'style': 'margin-bottom:.35em;' }, _('实例名称')),
+				E('div', { 'style': 'margin-bottom:1em;' }, [ nameInput ]),
+				E('p', { 'style': 'margin-bottom:.35em;' }, _('来源')),
+				E('div', { 'style': 'margin-bottom:1em;' }, [ sourceSelect ]),
+				repoRow,
+				uploadRow,
 				E('div', { 'class': 'right' }, [
 					E('button', {
 						'class': 'btn',
 						'click': function() { ui.hideModal(); }
 					}, _('取消')),
 					' ',
-					uploadBtn
+					E('button', {
+						'class': 'btn cbi-button cbi-button-apply',
+						'click': function() {
+							var name = nameInput.value.trim();
+							if (sourceSelect.value == 'repo') {
+								if (!versions.length) {
+									ui.addNotification(null, E('p', {}, _('版本列表为空，无法在线创建。')), 'danger');
+									return;
+								}
+								if (!name) name = versionSelect.value;
+								ui.hideModal();
+								self.startTask('instance_add', [ name, 'repo', versionSelect.value ]);
+							} else {
+								var file = fileInput.files[0];
+								if (!file) {
+									ui.addNotification(null, E('p', {}, _('请先选择核心文件。')), 'danger');
+									return;
+								}
+								if (file.size > 100 * 1024 * 1024) {
+									ui.addNotification(null, E('p', {}, _('文件大小超过 100 MB 限制')), 'danger');
+									return;
+								}
+								if (!name) name = file.name;
+								ui.hideModal();
+								self.uploadCoreFile(file, 'instance_add', [ name, 'upload' ]);
+							}
+						}
+					}, _('创建'))
 				])
 			])
 		]);
 	},
 
-	uploadCoreFile: function(file) {
+	showReplaceInstanceDialog: function(inst) {
+		var self = this;
+		var versions = (this.releasesData && this.releasesData.versions) || [];
+
+		var sourceSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:100%; box-sizing:border-box;' }, [
+			E('option', { 'value': 'repo' }, _('在线仓库')),
+			E('option', { 'value': 'upload' }, _('本地上传'))
+		]);
+		var versionSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:100%; box-sizing:border-box;' },
+			versions.map(function(v) { return E('option', { 'value': v }, v); }));
+		var repoRow = E('div', { 'style': 'margin-bottom:1em;' }, [
+			E('p', { 'style': 'margin-bottom:.35em;' }, _('选择版本')),
+			versions.length ? versionSelect : E('p', { 'style': 'color:var(--text-color-medium, #999);' }, _('版本列表为空，请先在概览页点检查图标刷新。'))
+		]);
+
+		var fileInput = E('input', { 'type': 'file', 'style': 'display:none;' });
+		var fileName = E('span', { 'style': 'color:var(--text-color-medium, #999); margin-left:.5em;' }, _('未选择文件'));
+		fileInput.addEventListener('change', function() {
+			var file = fileInput.files[0];
+			fileName.textContent = file ? '%s (%s)'.format(file.name, formatBytes(file.size)) : _('未选择文件');
+		});
+		var uploadRow = E('div', { 'style': 'margin-bottom:1em; display:none;' }, [
+			E('p', { 'style': 'margin-bottom:.35em;' }, _('选择本地的 VoHive 核心二进制文件')),
+			E('button', {
+				'class': 'btn cbi-button',
+				'click': function() { fileInput.click(); }
+				}, _('选择文件')),
+			fileName
+		]);
+
+		sourceSelect.addEventListener('change', function() {
+			var repo = sourceSelect.value == 'repo';
+			repoRow.style.display = repo ? '' : 'none';
+			uploadRow.style.display = repo ? 'none' : '';
+		});
+
+		ui.showModal(_('替换核心'), [
+			E('div', { 'style': 'width:100%; box-sizing:border-box;' }, [
+				E('p', { 'style': 'margin-bottom:1em;' }, _('将替换「%s」的核心二进制，实例名称与配置不变。').format(inst.name)),
+				E('p', { 'style': 'margin-bottom:.35em;' }, _('来源')),
+				E('div', { 'style': 'margin-bottom:1em;' }, [ sourceSelect ]),
+				repoRow,
+				uploadRow,
+				E('div', { 'class': 'right' }, [
+					E('button', {
+						'class': 'btn',
+						'click': function() { ui.hideModal(); }
+					}, _('取消')),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button cbi-button-apply',
+						'click': function() {
+							if (sourceSelect.value == 'repo') {
+								if (!versions.length) {
+									ui.addNotification(null, E('p', {}, _('版本列表为空，无法在线替换。')), 'danger');
+									return;
+								}
+								ui.hideModal();
+								self.startTask('instance_replace', [ inst.id, 'repo', versionSelect.value ]);
+							} else {
+								var file = fileInput.files[0];
+								if (!file) {
+									ui.addNotification(null, E('p', {}, _('请先选择核心文件。')), 'danger');
+									return;
+								}
+								if (file.size > 100 * 1024 * 1024) {
+									ui.addNotification(null, E('p', {}, _('文件大小超过 100 MB 限制')), 'danger');
+									return;
+								}
+								ui.hideModal();
+								self.uploadCoreFile(file, 'instance_replace', [ inst.id, 'upload' ]);
+							}
+						}
+					}, _('替换'))
+				])
+			])
+		]);
+	},
+
+		uploadCoreFile: function(file, taskType, taskArgs) {
 		var self = this;
 		var xhr;
 		var uploadPath = '/tmp/vohive/download/vohive-core-upload';
@@ -432,7 +549,7 @@ return view.extend({
 					}
 				} catch(e) {}
 				ui.hideModal();
-				self.startTask('upload_core', []);
+				self.startTask(taskType || 'upload_core', taskArgs || []);
 			} else {
 				ui.hideModal();
 				ui.addNotification(null, E('p', {}, _('上传失败: HTTP %d').format(xhr.status)), 'danger');
@@ -467,7 +584,8 @@ return view.extend({
 	refreshAfterTask: function(status) {
 		var self = this;
 		return this.refreshStatus().then(function(freshStatus) {
-			if (status.type == 'install_core' || status.type == 'upload_core') {
+			if (status.type == 'install_core' || status.type == 'upload_core' ||
+				status.type == 'instance_add' || status.type == 'instance_replace') {
 				return self.refreshCoreSection(freshStatus || {});
 			}
 
@@ -622,78 +740,203 @@ return view.extend({
 	},
 
 	renderCoreManagement: function(status, releases) {
-		var m = new form.Map('vohive');
-		var s, o;
+		var self = this;
+		return fs.exec_direct('/usr/share/vohive/instances.sh', []).catch(function() {
+			return '{"ok":false,"instances":[],"active":""}';
+		}).then(function(text) {
+			return self.buildCoreSection(status, releases, parseJson(text));
+		});
+	},
+
+	buildCoreSection: function(status, releases, data) {
+		var self = this;
+		var instances = data.instances || [];
 		var repoOk = releases.ok !== false && releases.latest;
+		var repo = releaseRepoSlug(uci.get('vohive', 'main', 'release_repo'));
 
-		s = m.section(form.NamedSection, 'main', 'vohive', _('核心管理'));
-		s.addremove = false;
-
-		o = s.option(form.Value, 'release_repo', _('Release 仓库地址'));
-		o.rmempty = false;
-		o.default = DEFAULT_CORE_REPO;
-		o.validate = function(section_id, value) {
-			return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(releaseRepoSlug(value)) || _('必须是 GitHub 仓库地址');
-		};
-
-		o = s.option(form.DummyValue, '_repo_status', _('仓库状态'));
-		o.rawhtml = true;
-		o.cfgvalue = function(section_id) {
-			var color = repoOk ? '#37a24d' : '#d9534f';
-			var text = repoOk ? _('可用') : _('不可用或无 Release');
-			var repo = releaseRepoSlug(uci.get('vohive', section_id, 'release_repo'));
-			return '<span style="color:%s; font-weight:700;">●</span> <span style="color:%s;">%s</span> <a href="https://github.com/%s/releases" target="_blank" rel="noreferrer" style="margin-left:1em;">前往核心发布页↗</a>'.format(color, color, text, repo);
-		};
-
-		o = s.option(form.ListValue, 'core_arch', _('核心架构'));
-		o.rmempty = false;
-		o.value('arm64', 'linux_arm64');
-		o.value('amd64', 'linux_amd64');
-		o.value('armv7', 'linux_armv7');
-		o.default = status.core_arch_effective || 'arm64';
-		o.cfgvalue = function(section_id) {
-			var value = uci.get('vohive', section_id, 'core_arch');
-			return value || status.core_arch_effective || 'arm64';
-		};
-		o.readonly = !repoOk;
-
-		o = s.option(form.ListValue, 'version', _('指定版本'));
-		o.rmempty = false;
-		(releases.versions || []).forEach(function(version) {
-			o.value(version, version);
+		var repoInput = E('input', {
+			'type': 'text', 'class': 'cbi-input-text',
+			'value': uci.get('vohive', 'main', 'release_repo') || DEFAULT_CORE_REPO,
+			'style': 'width:300px; max-width:100%; box-sizing:border-box;',
+			'autocomplete': 'url'
 		});
-		o.default = (releases.versions || [])[0];
-		o.cfgvalue = function(section_id) {
-			var value = uci.get('vohive', section_id, 'version');
-			return (value && (releases.versions || []).indexOf(value) >= 0) ? value : (releases.versions || [])[0];
-		};
-		o.readonly = !repoOk;
+		var archSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:200px; max-width:100%; box-sizing:border-box;' }, [
+			E('option', { 'value': 'arm64' }, 'linux_arm64'),
+			E('option', { 'value': 'amd64' }, 'linux_amd64'),
+			E('option', { 'value': 'armv7' }, 'linux_armv7')
+		]);
+		archSelect.value = uci.get('vohive', 'main', 'core_arch') || status.core_arch_effective || 'arm64';
 
-		o = s.option(form.Button, '_install_core', _('在线安装'));
-		o.inputstyle = 'apply';
-		o.readonly = !repoOk;
-		o.onclick = ui.createHandlerFn(this, function() {
-			if (!repoOk)
+		var repoState = repoOk
+			? E('span', {}, [ E('span', { 'style': 'color:#37a24d; font-weight:700;' }, '● '), E('span', { 'style': 'color:#37a24d;' }, _('可用')) ])
+			: E('span', {}, [ E('span', { 'style': 'color:#d9534f; font-weight:700;' }, '● '), E('span', { 'style': 'color:#d9534f;' }, _('不可用或无 Release')) ]);
+
+		var settingsTable = E('table', { 'class': 'table' }, [
+			E('tr', {}, [
+				E('td', { 'style': 'width:30%;' }, _('Release 仓库地址')),
+				E('td', {}, [ repoInput ])
+			]),
+			E('tr', {}, [
+				E('td', {}, _('仓库状态')),
+				E('td', {}, [ repoState, ' ', E('a', {
+					'href': 'https://github.com/%s/releases'.format(repo),
+					'target': '_blank', 'rel': 'noreferrer'
+				}, _('前往核心发布页↗')) ])
+			]),
+			E('tr', {}, [
+				E('td', {}, _('核心架构')),
+				E('td', {}, [ archSelect ])
+			])
+		]);
+
+		var settingsRow = E('div', { 'style': 'margin:.75em 0 1.25em;' }, [
+			E('button', {
+				'class': 'btn cbi-button cbi-button-apply',
+				'click': function() {
+					uci.set('vohive', 'main', 'release_repo', repoInput.value);
+					uci.set('vohive', 'main', 'core_arch', archSelect.value);
+					return uci.save().then(function() {
+						ui.addNotification(null, E('p', {}, _('仓库设置已保存')), 'info');
+						return self.checkVersionUpdates();
+					});
+				}
+			}, _('保存设置'))
+		]);
+
+		var cards = instances.map(function(inst) { return self.instanceCard(inst, status); });
+		cards.push(self.newInstanceCard(instances.length === 0));
+
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('核心管理')),
+			settingsTable,
+			settingsRow,
+			E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:1em;' }, cards)
+		]);
+	},
+
+	instanceCard: function(inst, status) {
+		var self = this;
+		var isActive = !!inst.active;
+		var isRunning = isActive && !!status.running;
+
+		var stateNode;
+		if (isRunning)
+			stateNode = E('span', {}, [ E('span', { 'style': 'color:#37a24d; font-weight:700;' }, '● '), E('span', { 'style': 'color:#37a24d;' }, _('运行中')) ]);
+		else if (isActive)
+			stateNode = E('span', {}, [ E('span', { 'style': 'color:#09c; font-weight:700;' }, '● '), E('span', {}, _('当前核心（未运行）')) ]);
+		else
+			stateNode = E('span', {}, [ E('span', { 'style': 'color:#999; font-weight:700;' }, '● '), E('span', { 'style': 'color:#999;' }, _('未启用')) ]);
+
+		var created = inst.created ? new Date(parseInt(inst.created) * 1000).toLocaleString() : '—';
+		var infoRows = [
+			[ _('版本'), inst.version || '—' ],
+			[ _('来源'), inst.source == 'repo' ? _('在线仓库') : _('本地上传') ],
+			[ _('大小'), formatBytes(inst.size) ],
+			[ _('创建时间'), created ]
+		].map(function(row) {
+			return E('tr', {}, [
+				E('td', { 'style': 'width:30%;' }, row[0]),
+				E('td', {}, row[1])
+			]);
+		});
+
+		var buttons = [];
+		if (!isActive) {
+			buttons.push(E('button', {
+				'class': 'btn cbi-button cbi-button-apply',
+				'click': function() { return self.switchInstance(inst, status); }
+			}, _('切换')));
+		}
+		buttons.push(E('button', {
+			'class': 'btn cbi-button',
+			'click': function() { return self.showReplaceInstanceDialog(inst); }
+		}, _('替换')));
+		if (!isActive) {
+			buttons.push(E('button', {
+				'class': 'btn cbi-button cbi-button-reset',
+				'click': function() { return self.removeInstance(inst); }
+			}, _('删除')));
+		}
+
+		return E('div', {
+			'style': [
+				'flex:1 1 300px',
+				'max-width:420px',
+				'border:1px solid var(--border-color-medium)',
+				'border-radius:6px',
+				'padding:1em',
+				'box-sizing:border-box'
+			].join(';')
+		}, [
+			E('div', { 'style': 'display:flex; align-items:center; justify-content:space-between; gap:1em; margin-bottom:.75em;' }, [
+				E('strong', { 'style': 'font-size:1.05em;' }, inst.name),
+				stateNode
+			]),
+			E('table', { 'class': 'table', 'style': 'margin-bottom:1em;' }, infoRows),
+			E('div', { 'style': 'display:flex; gap:.5em; flex-wrap:wrap;' }, buttons)
+		]);
+	},
+
+	newInstanceCard: function(empty) {
+		var self = this;
+		var children = [];
+		if (empty)
+			children.push(E('p', { 'style': 'color:var(--text-color-medium, #999); margin:0;' }, _('尚未创建任何核心实例')));
+		children.push(E('button', {
+			'class': 'btn cbi-button cbi-button-apply',
+			'click': function() { return self.showCreateInstanceDialog(); }
+		}, _('＋ 新建核心')));
+
+		return E('div', {
+			'style': [
+				'flex:1 1 300px',
+				'max-width:420px',
+				'border:1px dashed var(--border-color-medium)',
+				'border-radius:6px',
+				'padding:1em',
+				'box-sizing:border-box',
+				'display:flex',
+				'flex-direction:column',
+				'align-items:center',
+				'justify-content:center',
+				'gap:.75em',
+				'min-height:180px'
+			].join(';')
+		}, children);
+	},
+
+	switchInstance: function(inst, status) {
+		var self = this;
+		var message = status.running
+			? _('将停止当前运行的核心，并切换到「%s」启动。切换失败时会自动回滚。').format(inst.name)
+			: _('将当前核心切换为「%s」（服务未运行，下次启动时生效）。').format(inst.name);
+		return confirmModal(_('切换核心'), message).then(function(confirmed) {
+			if (!confirmed)
 				return;
-			return m.save().then(function() {
-				var version = uci.get('vohive', 'main', 'version') || 'latest';
-				var repo = uci.get('vohive', 'main', 'release_repo') || DEFAULT_CORE_REPO;
-				var arch = uci.get('vohive', 'main', 'core_arch') || '';
-				return this.startTask('install_core', [ version, repo, arch ]);
-		}.bind(this));
-	});
-
-		o = s.option(form.Button, '_upload_core', _('本地安装'));
-		o.inputstyle = 'action';
-		o.onclick = ui.createHandlerFn(this, function() {
-			return this.showUploadCoreDialog();
-		});
-
-		return m.render().then(function(node) {
-			node.querySelectorAll('input[id$=".release_repo"]').forEach(function(input) {
-				input.setAttribute('autocomplete', 'url');
+			return fs.exec_direct('/usr/share/vohive/instance_switch.sh', [ inst.id ]).then(function(text) {
+				notifyResult(text);
+				return self.refreshStatus();
+			}).then(function(fresh) {
+				return self.refreshCoreSection(fresh || {});
+			}).catch(function(e) {
+				ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
 			});
-			return node;
+		});
+	},
+
+	removeInstance: function(inst) {
+		var self = this;
+		return confirmModal(_('删除核心'), _('确定删除核心实例「%s」？此操作不可恢复。').format(inst.name)).then(function(confirmed) {
+			if (!confirmed)
+				return;
+			return fs.exec_direct('/usr/share/vohive/instance_remove.sh', [ inst.id ]).then(function(text) {
+				notifyResult(text);
+				return self.refreshStatus();
+			}).then(function(fresh) {
+				return self.refreshCoreSection(fresh || {});
+			}).catch(function(e) {
+				ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
+			});
 		});
 	},
 
