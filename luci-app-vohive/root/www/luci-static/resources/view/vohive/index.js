@@ -881,7 +881,7 @@ return view.extend({
 				'max-width:420px',
 				'border:1px solid var(--border-color-medium)',
 				'border-radius:6px',
-				'padding:1em',
+				'padding:1em 1em 1em 0',
 				'margin:0',
 				'box-sizing:border-box'
 			].join(';')
