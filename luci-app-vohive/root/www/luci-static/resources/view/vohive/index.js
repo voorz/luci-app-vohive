@@ -789,7 +789,7 @@ return view.extend({
 			])
 		]);
 
-		var settingsRow = E('div', { 'style': 'margin:.75em 0 1.25em;' }, [
+		var settingsRow = E('div', { 'style': 'margin:.75em 0 0;' }, [
 			E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
 				'click': function() {
@@ -806,10 +806,24 @@ return view.extend({
 		var cards = instances.map(function(inst) { return self.instanceCard(inst, status); });
 		cards.push(self.newInstanceCard(instances.length === 0));
 
+		/* Same card treatment as the instance cards below, so the
+		   settings region and the instance region sit at the exact
+		   same inset from the section frame (section padding + one
+		   card padding) instead of the instances stacking two layers
+		   against the settings' one. */
+		var settingsCard = E('div', {
+			'style': [
+				'border:1px solid var(--border-color-medium)',
+				'border-radius:6px',
+				'padding:1em',
+				'box-sizing:border-box',
+				'margin-bottom:1em'
+			].join(';')
+		}, [ settingsTable, settingsRow ]);
+
 		return E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('核心管理')),
-			settingsTable,
-			settingsRow,
+			settingsCard,
 			E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:1em;' }, cards)
 		]);
 	},
