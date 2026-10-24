@@ -19,10 +19,6 @@
 </p>
 
 <p align="center">
-  <sub>Original author / developer: <a href="https://github.com/Demogorgon314"><strong>@Demogorgon314</strong></a></sub>
-</p>
-
-<p align="center">
   <a href="#installation">Installation</a> ·
   <a href="#features">Features</a> ·
 </p>
