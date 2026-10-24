@@ -1030,7 +1030,7 @@ return view.extend({
 				}
 			}
 
-			var metricSelect = E('select', { 'class': 'cbi-input-select', 'style': 'min-width:10em;' });
+			var metricSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:5em;' });
 			var optBackup = E('option', { 'value': 'backup' }, _('备用（其他 WAN 优先）'));
 			var optPrimary = E('option', { 'value': 'primary' }, _('主力（4G/5G 优先）'));
 			var optCustom = E('option', { 'value': 'custom' }, _('自定义'));
