@@ -791,7 +791,8 @@ return view.extend({
 		var s, o;
 		var repoOk = releases.ok !== false && releases.latest;
 
-		s = m.section(form.NamedSection, 'main', 'vohive', _('核心仓库配置：替换任何vohive核心仓库地址以接入在线安装与更新(可选)'));
+		s = m.section(form.NamedSection, 'main', 'vohive', _('核心仓库配置'));
+		s.description = _('替换任何 vohive 核心仓库地址以接入在线安装与更新（可选）');
 		s.addremove = false;
 
 		o = s.option(form.Value, 'release_repo', _('Release 仓库地址'));
