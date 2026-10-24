@@ -768,7 +768,7 @@ return view.extend({
 		cards.push(self.newInstanceCard(instances.length === 0));
 
 		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('核心管理')),
+			E('h3', {}, _('实例管理')),
 			E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:1em;' }, cards)
 		]);
 	},
