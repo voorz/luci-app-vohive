@@ -339,12 +339,12 @@ return view.extend({
 			'placeholder': _('例如：官方核心 / 某开发者适配版')
 		});
 		var sourceSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:100%; box-sizing:border-box;' }, [
-			E('option', { 'value': 'repo' }, _('在线仓库')),
-			E('option', { 'value': 'upload' }, _('本地上传'))
+			E('option', { 'value': 'upload' }, _('本地上传')),
+			E('option', { 'value': 'repo' }, _('在线仓库'))
 		]);
 		var versionSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:100%; box-sizing:border-box;' },
 			versions.map(function(v) { return E('option', { 'value': v }, v); }));
-		var repoRow = E('div', { 'style': 'margin-bottom:1em;' }, [
+		var repoRow = E('div', { 'style': 'margin-bottom:1em; display:none;' }, [
 			E('p', { 'style': 'margin-bottom:.35em;' }, _('选择版本')),
 			versions.length ? versionSelect : E('p', { 'style': 'color:var(--text-color-medium, #999);' }, _('版本列表为空，请先在概览页点检查图标刷新。'))
 		]);
@@ -355,7 +355,7 @@ return view.extend({
 			var file = fileInput.files[0];
 			fileName.textContent = file ? '%s (%s)'.format(file.name, formatBytes(file.size)) : _('未选择文件');
 		});
-		var uploadRow = E('div', { 'style': 'margin-bottom:1em; display:none;' }, [
+		var uploadRow = E('div', { 'style': 'margin-bottom:1em;' }, [
 			E('p', { 'style': 'margin-bottom:.35em;' }, _('选择本地的 VoHive 核心二进制文件')),
 			E('button', {
 				'class': 'btn cbi-button',
@@ -388,12 +388,15 @@ return view.extend({
 						'class': 'btn cbi-button cbi-button-apply',
 						'click': function() {
 							var name = nameInput.value.trim();
+							if (!name) {
+								ui.addNotification(null, E('p', {}, _('实例名称不能为空')), 'danger');
+								return;
+							}
 							if (sourceSelect.value == 'repo') {
 								if (!versions.length) {
 									ui.addNotification(null, E('p', {}, _('版本列表为空，无法在线创建。')), 'danger');
 									return;
 								}
-								if (!name) name = versionSelect.value;
 								ui.hideModal();
 								self.startTask('instance_add', [ name, 'repo', versionSelect.value ]);
 							} else {
@@ -406,7 +409,6 @@ return view.extend({
 									ui.addNotification(null, E('p', {}, _('文件大小超过 100 MB 限制')), 'danger');
 									return;
 								}
-								if (!name) name = file.name;
 								ui.hideModal();
 								self.uploadCoreFile(file, 'instance_add', [ name, 'upload' ]);
 							}
