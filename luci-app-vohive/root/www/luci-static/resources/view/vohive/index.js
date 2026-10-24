@@ -1125,7 +1125,7 @@ return view.extend({
 		}, _('刷新状态')));
 
 		nodes.push(E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('路由器集成')),
+			E('h3', {}, _('接口配置')),
 			E('table', { 'class': 'table' }, integRows),
 			E('div', { 'style': 'display:flex; gap:.5em; flex-wrap:wrap; margin-top:.75em;' }, actionBtns),
 			E('p', { 'style': 'margin-top:.75em; color:var(--text-color-medium); font-size:13px;' }, _(
