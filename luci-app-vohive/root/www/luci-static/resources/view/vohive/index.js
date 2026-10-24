@@ -1044,8 +1044,10 @@ return view.extend({
 			metricSelect.appendChild(optCustom);
 
 			var customHint = E('span', {
-				'style': 'font-size:12px; color:var(--text-color-medium); display:none; margin-left:.25em;'
-			}, _('模块跃点 %s，填 < %s 为备用，> %s 为主力').format(cellularMetric, cellularMetric, cellularMetric));
+				'title': _('模块跃点 %s，填 < %s 为备用，> %s 为主力').format(cellularMetric, cellularMetric, cellularMetric),
+				'style': 'display:none; margin-left:.25em; cursor:help; color:var(--text-color-medium); vertical-align:middle;'
+			});
+			customHint.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 7.2V11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="4.8" r="1.15" fill="currentColor"/></svg>';
 
 			var customInput = E('input', {
 				'type': 'number', 'min': '0', 'max': '65535',
