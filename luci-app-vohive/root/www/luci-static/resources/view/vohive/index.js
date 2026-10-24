@@ -607,8 +607,10 @@ return view.extend({
 		if (!this.settingsSectionNode)
 			return Promise.resolve();
 
-		dom.content(this.settingsSectionNode, this.renderRepoSettings(this.lastStatus || {}, this.releasesData || {}));
-		return Promise.resolve();
+		var self = this;
+		return this.renderRepoSettings(this.lastStatus || {}, this.releasesData || {}).then(function(node) {
+			dom.content(self.settingsSectionNode, node);
+		});
 	},
 
 	refreshPluginSection: function() {
@@ -772,70 +774,47 @@ return view.extend({
 	},
 
 	renderRepoSettings: function(status, releases) {
-		var self = this;
+		var m = new form.Map('vohive');
+		var s, o;
 		var repoOk = releases.ok !== false && releases.latest;
-		var repo = releaseRepoSlug(uci.get('vohive', 'main', 'release_repo'));
 
-		var repoInput = E('input', {
-			'type': 'text', 'class': 'cbi-input-text',
-			'value': uci.get('vohive', 'main', 'release_repo') || DEFAULT_CORE_REPO,
-			'style': 'width:300px; max-width:100%; box-sizing:border-box;',
-			'autocomplete': 'url'
+		s = m.section(form.NamedSection, 'main', 'vohive', _('核心仓库'));
+		s.addremove = false;
+
+		o = s.option(form.Value, 'release_repo', _('Release 仓库地址'));
+		o.rmempty = false;
+		o.default = DEFAULT_CORE_REPO;
+		o.validate = function(section_id, value) {
+			return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(releaseRepoSlug(value)) || _('必须是 GitHub 仓库地址');
+		};
+
+		o = s.option(form.DummyValue, '_repo_status', _('仓库状态'));
+		o.rawhtml = true;
+		o.cfgvalue = function(section_id) {
+			var color = repoOk ? '#37a24d' : '#d9534f';
+			var text = repoOk ? _('可用') : _('不可用或无 Release');
+			var repo = releaseRepoSlug(uci.get('vohive', section_id, 'release_repo'));
+			return '<span style="color:%s; font-weight:700;">●</span> <span style="color:%s;">%s</span> <a href="https://github.com/%s/releases" target="_blank" rel="noreferrer" style="margin-left:1em;">前往核心发布页↗</a>'.format(color, color, text, repo);
+		};
+
+		o = s.option(form.ListValue, 'core_arch', _('核心架构'));
+		o.rmempty = false;
+		o.value('arm64', 'linux_arm64');
+		o.value('amd64', 'linux_amd64');
+		o.value('armv7', 'linux_armv7');
+		o.default = status.core_arch_effective || 'arm64';
+		o.cfgvalue = function(section_id) {
+			var value = uci.get('vohive', section_id, 'core_arch');
+			return value || status.core_arch_effective || 'arm64';
+		};
+		o.readonly = !repoOk;
+
+		return m.render().then(function(node) {
+			node.querySelectorAll('input[id$=".release_repo"]').forEach(function(input) {
+				input.setAttribute('autocomplete', 'url');
+			});
+			return node;
 		});
-		var archSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:200px; max-width:100%; box-sizing:border-box;' }, [
-			E('option', { 'value': 'arm64' }, 'linux_arm64'),
-			E('option', { 'value': 'amd64' }, 'linux_amd64'),
-			E('option', { 'value': 'armv7' }, 'linux_armv7')
-		]);
-		archSelect.value = uci.get('vohive', 'main', 'core_arch') || status.core_arch_effective || 'arm64';
-
-		var repoState = repoOk
-			? E('span', {}, [ E('span', { 'style': 'color:#37a24d; font-weight:700;' }, '● '), E('span', { 'style': 'color:#37a24d;' }, _('可用')) ])
-			: E('span', {}, [ E('span', { 'style': 'color:#d9534f; font-weight:700;' }, '● '), E('span', { 'style': 'color:#d9534f;' }, _('不可用或无 Release')) ]);
-
-		var settingsTable = E('table', { 'class': 'table' }, [
-			E('tr', {}, [
-				E('td', { 'style': 'width:30%;' }, _('Release 仓库地址')),
-				E('td', {}, [ repoInput ])
-			]),
-			E('tr', {}, [
-				E('td', {}, _('仓库状态')),
-				E('td', {}, [ repoState, ' ', E('a', {
-					'href': 'https://github.com/%s/releases'.format(repo),
-					'target': '_blank', 'rel': 'noreferrer'
-				}, _('前往核心发布页↗')) ])
-			]),
-			E('tr', {}, [
-				E('td', {}, _('核心架构')),
-				E('td', {}, [ archSelect ])
-			])
-		]);
-
-		var settingsRow = E('div', { 'style': 'margin:.75em 0 0;' }, [
-			E('button', {
-				'class': 'btn cbi-button cbi-button-apply',
-				'click': function() {
-					uci.set('vohive', 'main', 'release_repo', repoInput.value);
-					uci.set('vohive', 'main', 'core_arch', archSelect.value);
-					return uci.save().then(function() {
-						ui.addNotification(null, E('p', {}, _('仓库设置已保存')), 'info');
-						return self.checkVersionUpdates();
-					});
-				}
-			}, _('保存设置'))
-		]);
-
-		var settingsCard = E('div', {
-			'style': [
-				'border:1px solid var(--border-color-medium)',
-				'border-radius:6px',
-				'padding:1em',
-				'box-sizing:border-box',
-				'margin-bottom:1em'
-			].join(';')
-		}, [ settingsTable, settingsRow ]);
-
-		return settingsCard;
 	},
 
 	instanceCard: function(inst, status) {
@@ -1576,17 +1555,17 @@ updateStatusNode: function(status) {
 				self.networkPane = networkPane;
 
 				self.pluginSectionNode = E('div', {}, self.renderPluginManagement(plugin));
-				self.settingsSectionNode = E('div', {}, self.renderRepoSettings(status, releases));
+				self.settingsSectionNode = E('div', {});
+				self.renderRepoSettings(status, releases).then(function(node) {
+					dom.content(self.settingsSectionNode, node);
+				});
 
 				var networkTab = E('div', { 'data-tab': 'network', 'data-tab-title': _('集成') }, [
 					networkPane
 				]);
 
 				var settingsTab = E('div', { 'data-tab': 'settings', 'data-tab-title': _('设置') }, [
-					E('div', { 'class': 'cbi-section' }, [
-						E('h3', { 'style': 'margin-bottom:.75em;' }, _('设置')),
-						self.settingsSectionNode
-					]),
+					self.settingsSectionNode,
 					self.pluginSectionNode
 				]);
 				networkTab.addEventListener('cbi-tab-active', function() {
