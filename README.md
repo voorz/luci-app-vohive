@@ -37,8 +37,6 @@ One-line install on the router (fetches the latest release package; stops the Vo
 curl -fsSL https://raw.githubusercontent.com/voorz/luci-app-vohive/main/install.sh | sh
 ```
 
-Pin a version with `VERSION=0.1.47` in the environment. Manual packages are on the [Releases](https://github.com/voorz/luci-app-vohive/releases) page.
-
 ---
 
 ## Features
