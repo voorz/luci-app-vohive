@@ -1534,7 +1534,7 @@ updateStatusNode: function(status) {
 
 			return this.renderOverview(status, releases, plugin).then(function(overviewEl) {
 				var networkPane = E('div', {}, [
-					E('div', { 'class': 'cbi-section' }, E('em', {}, _('点击集成后读取连接状态。')))
+					E('div', { 'class': 'cbi-section' }, E('em', {}, _('点击 NAT 转发后读取连接状态。')))
 				]);
 				self.networkPane = networkPane;
 
@@ -1544,7 +1544,7 @@ updateStatusNode: function(status) {
 					dom.content(self.settingsSectionNode, node);
 				});
 
-				var networkTab = E('div', { 'data-tab': 'network', 'data-tab-title': _('集成') }, [
+				var networkTab = E('div', { 'data-tab': 'network', 'data-tab-title': _('NAT 转发') }, [
 					networkPane
 				]);
 
