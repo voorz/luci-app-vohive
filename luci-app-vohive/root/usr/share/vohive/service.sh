@@ -2,6 +2,8 @@
 
 set -eu
 
+. /usr/share/vohive/lib.sh
+
 action="${1:-}"
 
 json_escape() {
@@ -11,7 +13,7 @@ json_escape() {
 run_action() {
 	case "$action" in
 		start)
-			[ -x /etc/vohive/bin/vohive ] || {
+			[ -x "$(core_bin_path)" ] || {
 				printf '%s\n' "VoHive core is not installed"
 				return 1
 			}

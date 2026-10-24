@@ -8,7 +8,7 @@ type="${1:-}"
 shift || true
 
 case "$type" in
-	install_core|upload_core|update_plugin) ;;
+	install_core|upload_core|update_plugin|instance_add|instance_replace) ;;
 	*) printf '{"ok":false,"message":"不支持的任务类型"}\n'; exit 1 ;;
 esac
 
