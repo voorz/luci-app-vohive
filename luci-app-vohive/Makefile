@@ -1,8 +1,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-vohive
-# No PKG_VERSION here on purpose: the release workflow injects it
-# from the git tag, which is the single source of truth.
+# Fallback only: the release workflow injects PKG_VERSION from the
+# git tag (the single source of truth) ahead of PKG_NAME, and that
+# earlier ?= wins for official packages. This 0.0.1 keeps out-of-CI
+# builds (source feeds, firmware pre-installs) from falling back to
+# PKG_RELEASE as their version ("1", which the UI renders as "v1"
+# and the update check reads as newer than any official 0.x).
+PKG_VERSION?=0.0.1
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=VoHive
