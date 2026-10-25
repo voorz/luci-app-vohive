@@ -119,6 +119,38 @@ function statusBadge(active) {
 	}, active ? _('运行中') : _('已停止'));
 }
 
+function versionParts(value) {
+	return String(value || '').replace(/^v/, '').split('.').map(function(part) {
+		return parseInt(part) || 0;
+	});
+}
+
+/* Strictly-greater check with the same semantics as the shell-side
+   version_gt: true only when 'latest' really is a newer release. */
+function versionIsNewer(latest, current) {
+	var a = versionParts(latest);
+	var b = versionParts(current);
+	var n = Math.max(a.length, b.length);
+
+	for (var i = 0; i < n; i++) {
+		if ((a[i] || 0) > (b[i] || 0))
+			return true;
+		if ((a[i] || 0) < (b[i] || 0))
+			return false;
+	}
+	return false;
+}
+
+/* Update state as a quiet capsule tag (tinted background, same-hue
+   text) so it never outweighs the version text next to it. */
+function versionTag(canUpdate) {
+	return E('span', {
+		'style': 'display:inline-block; padding:0 .55em; border-radius:999px; font-size:.85em; line-height:1.8; vertical-align:middle; color:%s; background:%s;'.format(
+			canUpdate ? '#d58512' : '#37a24d',
+			canUpdate ? 'rgba(213,133,18,.14)' : 'rgba(55,162,77,.12)')
+	}, canUpdate ? _('可更新') : _('已是最新'));
+}
+
 var DEFAULT_CORE_REPO = 'https://github.com/voorz/vohive-release';
 var DEFAULT_PLUGIN_REPO = 'voorz/luci-app-vohive';
 
@@ -1335,31 +1367,35 @@ return view.extend({
 
 		var coreLatest = '';
 		if (releases && releases.latest) {
-			var canUpdate = status.core_installed && status.core_version && status.core_version != releases.latest;
-			coreLatest = E('span', {}, [
-				releaseLink(releaseRepo, releases.latest),
-				' ',
-				E('span', { 'style': 'color:%s;'.format(canUpdate ? '#d58512' : '#37a24d') }, canUpdate ? _('(可更新)') : _('(已是最新)'))
-			]);
+			var coreParts = [ releaseLink(releaseRepo, releases.latest) ];
+			/* The tag is a claim about the installed core, so it only
+			   appears when a real installed version is known: not
+			   installed, or a "--" placeholder, must not be labelled
+			   up-to-date. */
+			if (status.core_installed && status.core_version && status.core_version != '--')
+				coreParts.push(' ', versionTag(versionIsNewer(releases.latest, status.core_version)));
+			coreLatest = E('span', {}, coreParts);
 		} else if (releases && releases.loading) {
 			coreLatest = loadingText(_('正在加载...'));
 		} else {
-			coreLatest = _('未知');
+			coreLatest = '—';
 		}
 
 		var pluginLatest = '';
-		if (plugin && plugin.latest && plugin.ok !== false) {
-			var pluginCanUpdate = plugin.has_update;
+		var pluginKnown = !!(plugin && plugin.ok && plugin.latest);
+		if (pluginKnown) {
 			pluginLatest = E('span', {}, [
 				pluginVersionLink(pluginRepo, plugin.latest),
 				' ',
-				E('span', { 'style': 'color:%s;'.format(pluginCanUpdate ? '#d58512' : '#37a24d') }, pluginCanUpdate ? _('(可更新)') : _('(已是最新)'))
+				versionTag(!!plugin.has_update)
 			]);
 		} else if (plugin && plugin.loading) {
 			pluginLatest = loadingText(_('正在加载...'));
 		} else {
-			pluginLatest = _('未知');
+			pluginLatest = '—';
 		}
+		var pluginBtnDisabled = !(pluginKnown && plugin.has_update);
+		var pluginBtnLabel = (pluginKnown && !plugin.has_update) ? _('无需更新') : _('更新 LuCI 插件');
 
 		var checkIcon = E('span', { 'style': 'display:inline-block; width:15px; height:15px; vertical-align:-2px;' });
 		checkIcon.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" style="display:block" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>';
@@ -1378,11 +1414,11 @@ return view.extend({
 				'click': ui.createHandlerFn(this, this.checkVersionUpdates)
 			}, this.checkingVersions ? busyIcon : checkIcon), ' ', E('button', {
 				'class': 'btn cbi-button cbi-button-action',
-				'disabled': (plugin && plugin.ok !== false && !plugin.has_update) ? true : null,
+				'disabled': pluginBtnDisabled ? true : null,
 				'click': ui.createHandlerFn(this, function() {
 					return this.startTask('update_plugin', []);
 				})
-			}, (plugin && plugin.ok !== false && !plugin.has_update) ? _('无需更新') : _('更新 LuCI 插件')) ]) ],
+			}, pluginBtnLabel) ]) ],
 			[ _('CPU / 内存占用'), status.running ? cpuMemoryText(status) : _('未运行') ],
 		];
 
