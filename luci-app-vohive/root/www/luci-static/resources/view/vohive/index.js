@@ -1076,16 +1076,9 @@ return view.extend({
 		if (integrated) {
 			var isPrimary = status.is_primary;
 
-			/* Find cellular metric from default routes (QMI hardcoded, usually 5000) */
-			var cellularMetric = 5000;
-			if (status.default_routes && status.wwan_iface) {
-				for (var i = 0; i < status.default_routes.length; i++) {
-					if (status.default_routes[i].dev === status.wwan_iface) {
-						cellularMetric = status.default_routes[i].metric;
-						break;
-					}
-				}
-			}
+			/* Cellular metric as measured by the status script (live route
+			   metric; the QMI default of 5000 when no data route is up) */
+			var cellularMetric = status.cellular_metric || 5000;
 
 			var metricSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:5em;' });
 			var optBackup = E('option', { 'value': 'backup' }, _('备用（其他 WAN 优先）'));
