@@ -1080,7 +1080,7 @@ return view.extend({
 			   metric; the QMI default of 5000 when no data route is up) */
 			var cellularMetric = status.cellular_metric || 5000;
 
-			var metricSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:5em;' });
+			var metricSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:15em; min-width:0; flex:0 1 auto;' });
 			var optBackup = E('option', { 'value': 'backup' }, _('备用（其他 WAN 优先）'));
 			var optPrimary = E('option', { 'value': 'primary' }, _('主力（4G/5G 优先）'));
 			var optCustom = E('option', { 'value': 'custom' }, _('自定义'));
@@ -1095,14 +1095,14 @@ return view.extend({
 
 			var customHint = E('span', {
 				'title': _('模块跃点 %s，填 < %s 为备用，> %s 为主力').format(cellularMetric, cellularMetric, cellularMetric),
-				'style': 'display:none; margin-left:.25em; cursor:help; color:var(--text-color-medium); vertical-align:middle;'
+				'style': 'display:none; flex:none; line-height:0; cursor:help; color:var(--text-color-medium);'
 			});
 			customHint.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 7.2V11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="4.8" r="1.15" fill="currentColor"/></svg>';
 
 			var customInput = E('input', {
 				'type': 'number', 'min': '0', 'max': '65535',
 				'class': 'cbi-input-text',
-				'style': 'width:6em; display:none;',
+				'style': 'width:6em; min-width:0; flex:0 1 auto; display:none;',
 				'placeholder': 'metric'
 			});
 
@@ -1114,6 +1114,7 @@ return view.extend({
 
 			var applyBtn = E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
+				'style': 'flex:none;',
 				'click': ui.createHandlerFn(self, function() {
 					var mode = metricSelect.value;
 					var label;
@@ -1136,7 +1137,7 @@ return view.extend({
 
 			integRows.push(E('tr', {}, [
 				E('td', {}, _('路由优先级')),
-				E('td', { 'style': 'white-space:nowrap;' }, [ metricSelect, ' ', customHint, ' ', customInput, ' ', applyBtn ])
+				E('td', {}, [ E('div', { 'style': 'display:flex; align-items:center; gap:.4em; flex-wrap:nowrap;' }, [ metricSelect, customHint, customInput, applyBtn ]) ])
 			]));
 		} else {
 			integRows.push(E('tr', {}, [
