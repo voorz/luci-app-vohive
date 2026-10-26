@@ -1136,7 +1136,7 @@ return view.extend({
 
 			integRows.push(E('tr', {}, [
 				E('td', {}, _('路由优先级')),
-				E('td', { 'style': 'white-space:nowrap;' }, [ metricSelect, ' ', customInput, ' ', applyBtn, ' ', customHint ])
+				E('td', { 'style': 'white-space:nowrap;' }, [ metricSelect, ' ', customHint, ' ', customInput, ' ', applyBtn ])
 			]));
 		} else {
 			integRows.push(E('tr', {}, [
