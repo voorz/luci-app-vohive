@@ -52,6 +52,24 @@ find_wan_zone_idx() {
 	return 1
 }
 
+# route_exists <routes-text> <dev> <gateway> <metric>
+# Succeeds when the given default-route list already contains a route
+# with exactly this device, gateway (empty for gateway-less routes) and
+# metric (a route printed without a metric field has metric 0).
+route_exists() {
+	printf '%s\n' "$1" | awk -v want_dev="$2" -v want_gw="$3" -v want_metric="$4" '
+		{
+			dev = ""; gw = ""; metric = "0"
+			for (i = 1; i <= NF; i++) {
+				if ($i == "dev") dev = $(i + 1)
+				else if ($i == "via") gw = $(i + 1)
+				else if ($i == "metric") metric = $(i + 1)
+			}
+			if (dev == want_dev && gw == want_gw && metric == want_metric) found = 1
+		}
+		END { exit(found ? 0 : 1) }'
+}
+
 in_zone_networks() {
 	local idx="$1"
 	local current_networks net
@@ -154,7 +172,42 @@ do_set_metric() {
 	[ "$changed" = "1" ] || result_fail "未找到可调整的 WAN 接口"
 
 	uci commit network
-	/etc/init.d/network reload 2>/dev/null || true
+
+	# Apply the new metric to the live default routes of the other WANs.
+	# A full "network reload" would also bounce the wwan interfaces and
+	# drop the core's data session.  A route's metric is part of its key,
+	# so changing it means adding the route with the new metric first and
+	# then deleting the old one (add-then-delete leaves no gap without a
+	# default route).  If the new-metric route already exists (leftover
+	# from an interrupted run), just delete the old one.  Routes that do
+	# not exist right now need no live change: the committed UCI metric
+	# applies when the interface next comes up.
+	local routes_snapshot route_line route_dev route_gw route_metric
+	routes_snapshot="$(ip route show default 2>/dev/null || true)"
+	while IFS= read -r route_line; do
+		route_dev="$(printf '%s' "$route_line" | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')"
+		case "$route_dev" in
+			wwan*|qmimux*|'') continue ;;
+		esac
+		route_metric="$(printf '%s' "$route_line" | awk '{for(i=1;i<=NF;i++) if($i=="metric") print $(i+1)}')"
+		[ -n "$route_metric" ] || route_metric="0"
+		[ "$route_metric" = "$other_metric" ] && continue
+		route_gw="$(printf '%s' "$route_line" | sed -n 's/.*via \([0-9.]*\).*/\1/p')"
+		if route_exists "$routes_snapshot" "$route_dev" "$route_gw" "$other_metric"; then
+			:
+		elif [ -n "$route_gw" ]; then
+			ip route add default via "$route_gw" dev "$route_dev" metric "$other_metric" 2>/dev/null || continue
+		else
+			ip route add default dev "$route_dev" metric "$other_metric" 2>/dev/null || continue
+		fi
+		if [ -n "$route_gw" ]; then
+			ip route del default via "$route_gw" dev "$route_dev" metric "$route_metric" 2>/dev/null || true
+		else
+			ip route del default dev "$route_dev" metric "$route_metric" 2>/dev/null || true
+		fi
+	done <<EOF
+$routes_snapshot
+EOF
 
 	case "$mode" in
 		primary) result_ok "路由优先级已设为主力（4G/5G 优先，其他 WAN metric=$other_metric）" ;;
