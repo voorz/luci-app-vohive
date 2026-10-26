@@ -83,29 +83,44 @@ $(ip route show default 2>/dev/null || true)
 EOF
 
 # Determine routing priority
-# If wwan_iface route has the lowest metric, it's primary
+# A default route counts as cellular when its device is a modem netdev:
+# wwan* (the UCI-bound device) or qmimux* (the QMI mux interface the core
+# actually routes through when a data session is up).  Matching only the
+# UCI device name misses the live cellular route entirely and poisons the
+# "other WAN" minimum with the cellular metric itself.
+# If the cellular route has the lowest metric, it's primary.
 # When cellular has no route, infer from other WAN metric:
 #   other WAN metric > 5000 (cellular metric) => cellular will be primary
+is_cellular_dev() {
+	case "$1" in
+		wwan*|qmimux*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
 is_primary="false"
 cellular_metric=5000
-if [ -n "$wwan_iface" ] && [ "$route_count" -gt 0 ]; then
-	wwan_metric=""
+if [ "$route_count" -gt 0 ]; then
+	cell_metric=""
 	other_min_metric=999999
 	while IFS= read -r line; do
 		dev="$(printf '%s' "$line" | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')"
 		metric_str="$(printf '%s' "$line" | awk '{for(i=1;i<=NF;i++) if($i=="metric") print $(i+1)}')"
 		[ -n "$metric_str" ] || metric_str="0"
 		metric_val="${metric_str}"
-		if [ "$dev" = "$wwan_iface" ]; then
-			wwan_metric="$metric_val"
+		if is_cellular_dev "$dev"; then
+			if [ -z "$cell_metric" ] || [ "$metric_val" -lt "$cell_metric" ] 2>/dev/null; then
+				cell_metric="$metric_val"
+			fi
 		else
 			[ "$metric_val" -lt "$other_min_metric" ] 2>/dev/null && other_min_metric="$metric_val"
 		fi
 	done <<EOF
 $(ip route show default 2>/dev/null || true)
 EOF
-	if [ -n "$wwan_metric" ]; then
-		[ "$wwan_metric" -le "$other_min_metric" ] 2>/dev/null && is_primary="true"
+	if [ -n "$cell_metric" ]; then
+		cellular_metric="$cell_metric"
+		[ "$cell_metric" -le "$other_min_metric" ] 2>/dev/null && is_primary="true"
 	else
 		[ "$other_min_metric" -gt "$cellular_metric" ] 2>/dev/null && is_primary="true"
 	fi
@@ -120,5 +135,6 @@ printf '"netifd_device":"%s",' "$(json_escape "$netifd_device")"
 printf '"firewall_configured":%s,' "$firewall_configured"
 printf '"wwan_iface":"%s",' "$(json_escape "$wwan_iface")"
 printf '"is_primary":%s,' "$is_primary"
+printf '"cellular_metric":%s,' "$cellular_metric"
 printf '"default_routes":[%s]' "$default_routes"
 printf '}\n'
