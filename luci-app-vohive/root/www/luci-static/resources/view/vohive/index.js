@@ -374,6 +374,10 @@ return view.extend({
 			E('option', { 'value': 'upload' }, _('本地上传')),
 			E('option', { 'value': 'repo' }, _('在线仓库'))
 		]);
+		var cfgverSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:100%; box-sizing:border-box;' }, [
+			E('option', { 'value': '1.0' }, _('1.0（插件配置）')),
+			E('option', { 'value': '2.0' }, _('2.0（核心自管理）'))
+		]);
 		var versionSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:100%; box-sizing:border-box;' },
 			versions.map(function(v) { return E('option', { 'value': v }, v); }));
 		var repoRow = E('div', { 'style': 'margin-bottom:1em; display:none;' }, [
@@ -408,6 +412,8 @@ return view.extend({
 				E('div', { 'style': 'margin-bottom:1em;' }, [ nameInput ]),
 				E('p', { 'style': 'margin-bottom:.35em;' }, _('来源')),
 				E('div', { 'style': 'margin-bottom:1em;' }, [ sourceSelect ]),
+				E('p', { 'style': 'margin-bottom:.35em;' }, _('配置版本')),
+				E('div', { 'style': 'margin-bottom:1em;' }, [ cfgverSelect ]),
 				repoRow,
 				uploadRow,
 				E('div', { 'class': 'right' }, [
@@ -430,7 +436,7 @@ return view.extend({
 									return;
 								}
 								ui.hideModal();
-								self.startTask('instance_add', [ name, 'repo', versionSelect.value ]);
+								self.startTask('instance_add', [ name, 'repo', versionSelect.value, cfgverSelect.value ]);
 							} else {
 								var file = fileInput.files[0];
 								if (!file) {
@@ -442,7 +448,7 @@ return view.extend({
 									return;
 								}
 								ui.hideModal();
-								self.uploadCoreFile(file, 'instance_add', [ name, 'upload' ]);
+								self.uploadCoreFile(file, 'instance_add', [ name, 'upload', '', cfgverSelect.value ]);
 							}
 						}
 					}, _('创建'))
@@ -877,9 +883,30 @@ return view.extend({
 			stateNode = E('span', {}, [ E('span', { 'style': 'color:#999; font-weight:700;' }, '● '), E('span', { 'style': 'color:#999;' }, _('未启用')) ]);
 
 		var created = inst.created ? new Date(parseInt(inst.created) * 1000).toLocaleString() : '—';
+		var cfgverSelect = E('select', { 'class': 'cbi-input-select', 'style': 'width:auto;' }, [
+			E('option', { 'value': '1.0' }, '1.0'),
+			E('option', { 'value': '2.0' }, '2.0')
+		]);
+		cfgverSelect.value = inst.cfgver || '1.0';
+		cfgverSelect.addEventListener('change', function() {
+			var previous = inst.cfgver || '1.0';
+			var value = cfgverSelect.value;
+			fs.exec_direct('/usr/share/vohive/instance_cfgver.sh', [ inst.id, value ]).then(function(text) {
+				var result = parseJson(text);
+				notifyResult(text);
+				if (result.ok === false)
+					cfgverSelect.value = previous;
+				else
+					inst.cfgver = value;
+			}).catch(function(e) {
+				cfgverSelect.value = previous;
+				ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
+			});
+		});
 		var infoRows = [
 			[ _('版本'), inst.version || '—' ],
 			[ _('来源'), inst.source == 'repo' ? _('在线仓库') : _('本地上传') ],
+			[ _('配置版本'), cfgverSelect ],
 			[ _('大小'), formatBytes(inst.size) ],
 			[ _('创建时间'), created ]
 		].map(function(row) {
