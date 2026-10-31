@@ -233,7 +233,7 @@ normalize_plugin_version() {
 #   /etc/vohive/instances/<id>/vohive   instance binary
 #   /etc/vohive/instances/<id>/version  version string (may be "--")
 #   /etc/vohive/instances/<id>/arch     asset arch (may be "unknown")
-#   /etc/vohive/instances/<id>/meta     key=value: name, source, created
+#   /etc/vohive/instances/<id>/meta     key=value: name, source, created, cfgver
 #   /etc/vohive/active                  active instance id (single line)
 # Legacy single-core layout (/etc/vohive/bin/vohive) is migrated lazily
 # into an instance named "default" on first use; all resolvers below
@@ -260,6 +260,44 @@ instance_meta_get() {
 	value="$(awk -F= -v k="$key" '$1 == k { sub($1 "=", ""); print; exit }' "$file" 2>/dev/null || true)"
 	[ -n "$value" ] || return 1
 	printf '%s' "$value"
+}
+
+# Set one key in an instance's meta file, preserving all other keys.
+instance_meta_set() {
+	local id="$1" key="$2" value="$3" file tmp
+
+	file="$(instance_dir "$id")/meta"
+	[ -f "$file" ] || return 1
+	tmp="$file.tmp.$$"
+	awk -F= -v k="$key" -v v="$value" '
+		BEGIN { done = 0 }
+		$1 == k { if (!done) { print k "=" v; done = 1 } next }
+		{ print }
+		END { if (!done) print k "=" v }
+	' "$file" > "$tmp" && mv "$tmp" "$file"
+}
+
+cfgver_valid() {
+	case "$1" in
+		1.0|2.0) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+# The instance's config version: "1.0" cores take the plugin-rendered
+# config.yaml via -c and are configured from LuCI; "2.0" cores are
+# self-managed — they generate and own their configuration and are
+# launched without -c. Instances created before this field existed
+# have no cfgver in meta and default to "1.0".
+instance_cfgver() {
+	local id="$1" value
+
+	value="$(instance_meta_get "$id" cfgver 2>/dev/null || true)"
+	if cfgver_valid "$value"; then
+		printf '%s' "$value"
+	else
+		printf '1.0'
+	fi
 }
 
 migrate_legacy_instance() {

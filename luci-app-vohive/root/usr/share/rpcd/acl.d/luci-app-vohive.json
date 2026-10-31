@@ -19,6 +19,7 @@
 			"/usr/share/vohive/apply_config.sh": [ "exec" ],
 			"/usr/share/vohive/service.sh": [ "exec" ],
 			"/usr/share/vohive/instance_switch.sh": [ "exec" ],
+			"/usr/share/vohive/instance_cfgver.sh": [ "exec" ],
 			"/usr/share/vohive/instance_remove.sh": [ "exec" ],
 			"/usr/share/vohive/network_setup.sh": [ "exec" ],
 				"/usr/share/vohive/install_core.sh": [ "exec" ],

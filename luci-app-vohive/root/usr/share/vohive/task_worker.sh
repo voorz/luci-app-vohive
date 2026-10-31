@@ -309,10 +309,11 @@ install_instance_binary() {
 }
 
 instance_add() {
-	local name="$1" mode="$2" version="${3:-}"
+	local name="$1" mode="$2" version="${3:-}" cfgver="${4:-}"
 	local inst_id dir resolved
 
 	[ -n "$name" ] || fail "实例名字不能为空"
+	cfgver_valid "$cfgver" || cfgver="1.0"
 	[ "$mode" = "repo" ] || [ "$mode" = "upload" ] || fail "不支持的实例来源: $mode"
 
 	migrate_legacy_instance 2>/dev/null || true
@@ -330,6 +331,7 @@ instance_add() {
 		printf 'name=%s\n' "$name"
 		printf 'source=%s\n' "$mode"
 		printf 'created=%s\n' "$(date +%s)"
+		printf 'cfgver=%s\n' "$cfgver"
 	} > "$dir/meta"
 
 	finish_ok "已创建核心实例 $name"
@@ -367,10 +369,12 @@ instance_replace() {
 	# Read the old meta BEFORE truncating it with the redirect below.
 	old_name="$(instance_meta_get "$inst_id" name 2>/dev/null || echo "$inst_id")"
 	old_created="$(instance_meta_get "$inst_id" created 2>/dev/null || date +%s)"
+	old_cfgver="$(instance_cfgver "$inst_id")"
 	{
 		printf 'name=%s\n' "$old_name"
 		printf 'source=%s\n' "$mode"
 		printf 'created=%s\n' "$old_created"
+		printf 'cfgver=%s\n' "$old_cfgver"
 	} > "$dir/meta"
 
 	if [ "$was_running" = "1" ]; then
