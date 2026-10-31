@@ -12,7 +12,7 @@ CONFIG="/etc/vohive/config/config.yaml"
 RUNTIME_DIR="/etc/vohive"
 
 start_service() {
-	local enabled
+	local enabled id cfgver home launch
 
 	enabled="$(uci -q get vohive.main.enabled)"
 	[ "$enabled" = "1" ] || {
@@ -20,21 +20,37 @@ start_service() {
 		return 1
 	}
 
-	/usr/share/vohive/render_config.sh || return 1
-	mkdir -p "$RUNTIME_DIR/data"
-
 	[ -x "$BIN" ] || {
 		echo "VoHive core is not installed: $BIN"
 		return 1
 	}
 
-	[ -s "$CONFIG" ] || {
-		echo "VoHive config is missing: $CONFIG"
-		return 1
-	}
+	id="$(active_instance_id 2>/dev/null || true)"
+	cfgver="1.0"
+	[ -n "$id" ] && cfgver="$(instance_cfgver "$id" 2>/dev/null || printf '1.0')"
+
+	if [ "$cfgver" = "2.0" ]; then
+		# Self-managed core: it generates and owns its configuration
+		# under <instance dir>/config (config.toml, data, logs), so the
+		# plugin renders nothing and passes no -c; LuCI's base config
+		# does not apply to such cores.
+		home="$(instance_dir "$id")"
+		mkdir -p "$home"
+		launch="cd '$home' && exec '$BIN'"
+	else
+		/usr/share/vohive/render_config.sh || return 1
+		mkdir -p "$RUNTIME_DIR/data"
+
+		[ -s "$CONFIG" ] || {
+			echo "VoHive config is missing: $CONFIG"
+			return 1
+		}
+
+		launch="cd '$RUNTIME_DIR' && exec '$BIN' -c '$CONFIG'"
+	fi
 
 	procd_open_instance vohive
-	procd_set_param command /bin/sh -c "cd '$RUNTIME_DIR' && exec '$BIN' -c '$CONFIG'"
+	procd_set_param command /bin/sh -c "$launch"
 	procd_set_param respawn 3600 5 5
 	procd_set_param stdout 1
 	procd_set_param stderr 1
