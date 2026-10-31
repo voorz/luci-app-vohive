@@ -100,3 +100,8 @@ tmp="$CONFIG_FILE.tmp.$$"
 } > "$tmp"
 
 mv "$tmp" "$CONFIG_FILE"
+# The rendered file embeds the web admin password; keep it owner-only.
+# Self-managed (config version 2.0) cores refuse to start at all when
+# their configuration is world-readable, and 1.0 cores deserve the
+# same strictness.
+chmod 600 "$CONFIG_FILE"
